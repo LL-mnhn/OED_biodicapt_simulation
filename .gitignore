@@ -1,0 +1,34 @@
+# R files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# Seed - hide anonymise raw_data
+data/config/seed.R
+
+# Data - original and large datasets stay local
+data/raw_data/*
+data/preprocessed_data/*
+# ...except necessary folder/files
+!data/raw_data/.gitkeep
+!data/preprocessed_data/anonymised_BIODICAPT_2018_obs_features_res5km-WGS84.gpkg
+!data/preprocessed_data/anonymised_ENI500_2018_obs_features_res5km-WGS84.gpkg
+!data/preprocessed_data/STOC_2018_obs_features_res5km-WGS84.gpkg
+!data/preprocessed_data/RASTER_2018_env-data_5km-WGS84.tif
+!data/preprocessed_data/RASTER_2018_env-data_5km-WGS84.tif.aux.xml
+!data/preprocessed_data/RAW_2018_env-data_nokm-WGS84.tif
+!data/preprocessed_data/RAW_2018_env-data_nokm-WGS84.tif.aux.xml
+!data/preprocessed_data/HEX_2018_env-data_5km-WGS84.gpkg
+
+# Outputs results - only show 1st k-fold remove others manually
+outputs/results/model_*_k[2-9]/*
+outputs/results/model_*_k10/*
+MeSU_outputs/
+
+# Renv - can be rebuilt from renv.lock
+renv/library/
+renv/staging/
+
+# Test - exclude test scripts
+tests/

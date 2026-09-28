@@ -1,0 +1,154 @@
+<PAMDataset>
+  <PAMRasterBand band="1">
+    <Description>CLC</Description>
+    <GDALRasterAttributeTable tableType="thematic">
+      <FieldDefn index="0">
+        <Name>Value</Name>
+        <Type>0</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="1">
+        <Name>CLC</Name>
+        <Type>2</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="2">
+        <Name>NEW_CODE_18</Name>
+        <Type>2</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="3">
+        <Name>Red</Name>
+        <Type>1</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="4">
+        <Name>Green</Name>
+        <Type>1</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <FieldDefn index="5">
+        <Name>Blue</Name>
+        <Type>1</Type>
+        <Usage>0</Usage>
+      </FieldDefn>
+      <Row index="0">
+        <F>1</F>
+        <F>Artificial surfaces</F>
+        <F>1</F>
+        <F>0.8734402852050909</F>
+        <F>0.3689839572193636</F>
+        <F>0.6139037433155454</F>
+      </Row>
+      <Row index="1">
+        <F>21</F>
+        <F>Arable land</F>
+        <F>21</F>
+        <F>0.967320261438</F>
+        <F>0.967320261438</F>
+        <F>0.2196078431373333</F>
+      </Row>
+      <Row index="2">
+        <F>22</F>
+        <F>Permanent crops</F>
+        <F>22</F>
+        <F>0.9176470588236666</F>
+        <F>0.6013071895426667</F>
+        <F>0.1006535947713333</F>
+      </Row>
+      <Row index="3">
+        <F>23</F>
+        <F>Pastures</F>
+        <F>23</F>
+        <F>0.901960784314</F>
+        <F>0.901960784314</F>
+        <F>0.301960784314</F>
+      </Row>
+      <Row index="4">
+        <F>24</F>
+        <F>Heterogeneous agricultural areas</F>
+        <F>24</F>
+        <F>0.96274509803925</F>
+        <F>0.8509803921570001</F>
+        <F>0.4764705882355</F>
+      </Row>
+      <Row index="5">
+        <F>3</F>
+        <F>Forest and semi-natural areas</F>
+        <F>3</F>
+        <F>0.5591503267975</F>
+        <F>0.8379084967320833</F>
+        <F>0.367320261438</F>
+      </Row>
+      <Row index="6">
+        <F>4</F>
+        <F>Wetlants</F>
+        <F>4</F>
+        <F>0.6611764705884</F>
+        <F>0.6611764705884</F>
+        <F>0.9803921568628</F>
+      </Row>
+      <Row index="7">
+        <F>5</F>
+        <F>Water bodies</F>
+        <F>5</F>
+        <F>0.410980392157</F>
+        <F>0.9396078431372</F>
+        <F>0.8807843137256</F>
+      </Row>
+      <Row index="8">
+        <F>999</F>
+        <F>NODATA</F>
+        <F>999</F>
+        <F>1</F>
+        <F>1</F>
+        <F>1</F>
+      </Row>
+    </GDALRasterAttributeTable>
+  </PAMRasterBand>
+  <PAMRasterBand band="2">
+    <Description>distance to Artificial surfaces</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="3">
+    <Description>distance to Arable land</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="4">
+    <Description>distance to Permanent crops</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="5">
+    <Description>distance to Pastures</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="6">
+    <Description>distance to Heterogeneous agricultural areas</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="7">
+    <Description>distance to Forest and semi-natural areas</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="8">
+    <Description>distance to Wetlants</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="9">
+    <Description>distance to Water bodies</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="10">
+    <Description>distance to NODATA</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="11">
+    <Description>CHELSA_hurs</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="12">
+    <Description>CHELSA_pr</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="13">
+    <Description>CHELSA_tas</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="14">
+    <Description>ndvi</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="15">
+    <Description>Elevation</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="16">
+    <Description>light_pollution</Description>
+  </PAMRasterBand>
+</PAMDataset>

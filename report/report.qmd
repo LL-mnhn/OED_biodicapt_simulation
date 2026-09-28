@@ -1,0 +1,115 @@
+---
+title: "STOC: Optimal Experimental Design"
+
+author:
+  - name: Loïc Lehnhoff
+    orcid: 0000-0002-2100-6626
+    email: loic.lehnhoff@mnhn.fr
+    affiliation: UMR CESCO
+    role: 
+        - writing
+        - visualization
+        - analysis
+        - data curation
+        - methodology
+  - name: Karine Princé
+    affiliation: UMR CESCO
+    role:
+        - supervision
+        - methodology
+  - name: Nicolas Parisey
+    affiliation: UMR IGEPP
+    role:
+        - supervision
+        - methodology
+
+date: last-modified
+date-format: iso
+
+toc: true
+toc-location: right
+toc-depth: 4
+toc-expand: 2
+number-sections: false
+
+bibliography: references.bib
+csl: style/vancouver.csl
+
+theme:
+  light: style/brite-mnhn.scss
+
+execute:
+  fig-format: png
+  fig-dpi: 300
+  dev: cairo_pdf
+
+format:
+  html:
+    page-layout: article
+    include-after-body: style/tabset-anchor-fix.html
+  pdf:
+    documentclass: article
+    papersize: a4
+    geometry:
+      - margin=30mm
+---
+
+\thispagestyle{empty}
+\newpage
+
+# Introduction
+## OED
+**Optimal Experimental Design** (or OED for short) is a way for designing experiments that aims at maximising information gain while minimising a cost function. This cost function can encompass prediction uncertainty, material cost, deployment time... it is up to the user to select the parameters to optimise.
+
+[The key concept is that **not all observations are equally informative**.]{.mark} 
+
+This concept[^1] can be particularly interesting when working with participatory science datasets. In the BIODICAPT research project, we are working with voluntary participants but cannot make use of all of them (due to time, logistical and budget constraint). In this context, pre-studying the sampling designs for our experiments car enable us to optimise data collection.
+
+[^1]: Sometimes, also referred to as "adaptive sampling".
+
+## BIODICAPT
+
+BIODICAPT is a French research project that aims at monitoring biodiversity of agricultural lands on a large (*aka national*) scale through the use of various recording devices.
+
+BIODICAPT started in early-2026, the first results (data extraction of species distributions) are not expected before late-2026 or early-2027. However, deployment on lands of voluntary agricultors is due late-2026. Therefore, to prepare the upcoming sampling design, we make use of simulated species distributions.
+
+## Strategy
+We are trying to answer two questions:
+
+1. Which points are the most informative in the 500ENI network, given our previous data collection and our constraints?
+2. Which points enable us to detect an effect of actionable variables?
+
+To answer these questions using OED, we must use models (because their predictions is what will enable us to plan our sampling designs). We are using Species Distribution Models (SDM) to model the distribution of simulated species over France's metropolitan area. In particular, we will be using HMSC, which is a joint-SDM (JSDM) [@ovaskainen_how_2017]. These models make use of several species distributions to find *latent* links between them, which supposedly improves the prediction accuracy[^2].
+
+[^2]: JSDM are usually opposed to single SDMs (Species Distribution Models applied to one species) and SSDMs (Stacked SDMs: mutliple SDMs glued together, with no link between them).
+
+Relative to our model, our initial questions become:
+
+1. Which sampling design minimises model uncertainty?
+2. Which sampling design enable us to best estimate the effect of our actionable variables?
+
+To answer them, we will use a simulated dataset of species distributions made using the `virtualspecies` package [@virtualspecies]. The distributions are based on environmental variables extracted from various sources (CORINE Land Cover 2018, CHELSA model, NASA NDVI, ...) and will be presence-absence of species (typical output expected from acoustic detections).
+
+
+### HMSC
+HMSC (Hierarchical Modelling of Species Communities) is a JSDM developped by Ovaskainen et al. (2017) [@ovaskainen_how_2017], it is distributed as an open-source R-package on [GitHub](https://github.com/hmsc-r/HMSC/) [@tikhonov_joint_2020]. 
+
+It is undoubtebly the most widely used JSDM in the last years. Its principle is summarised in the next figure, extracted from its original publication [@ovaskainen_how_2017]:
+
+![Copy of Figure 4 from Ovaskainen et al. (2017) [@ovaskainen_how_2017]](images/figure4_ovaskainen_2017.png)
+
+### GJAM
+::: {.callout-caution collapse="true"}
+## Work in progress...
+
+Only HMSC has been implemented into our code for now. GJAM is under consideration, as well as other SDMs: RF, SSDM, deep-SDMs, ...
+
+↳ This section will be updated when new results are available.
+:::
+
+# Material and Methods
+::: {.callout-note collapse="false"}
+## To be continued...
+
+This report is still under construction, come back later! 
+:::
