@@ -28,6 +28,13 @@ CORRELATED_LAYERS_IN_MASTER <- list(  # keep first name for each vector in list
     c("CHELSA_tas", "Elevation")
 ) 
 
+if (authorise_overwrite(SIMULATE_PATH)) {
+    unlink(SIMULATE_PATH, recursive = TRUE)
+    dir.create(SIMULATE_PATH)
+} else {
+    stop("User refused to overwrite previous simulations.")
+}
+
 
 ##### Load datasets ##### -----------------------------------------------------
 cli_alert_info("Loading datasets...")
@@ -65,8 +72,6 @@ simulations <- simulate_from_PCA(
     n_sp = length(NAMES_SPECIES), 
     prevalences = stoc_occurences$frequency)
 
-# save simulations
-dir.create(SIMULATE_PATH)
 # Saving dont forget to wrap any SpatRaster objects inside the list)
 saveRDS(
     wrap_simulations(simulations), 

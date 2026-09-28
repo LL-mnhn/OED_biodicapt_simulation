@@ -34,19 +34,25 @@ CORRELATED_LAYERS_IN_MASTER <- list(  # keep first name for each vector in list
     c("CHELSA_tas", "Elevation")
 ) 
 
+if (authorise_overwrite(EXPLORE_PATH)) {
+    unlink(EXPLORE_PATH, recursive = TRUE)
+    dir.create(EXPLORE_PATH)
+} else {
+    stop("User refused to overwrite previous analysis.")
+}
 
 ##### Local functions ##### ---------------------------------------------------
 save_exploration <- function() {
     make_plots <- typeline(
         prompt = paste0(paste0(
             "Show exploration plots of data, save figures & occurrences?",
-            "(overwrites by default)? [Y/n]: ")))
+            "(overwrites previous files in 'outputs/data_exploration')? [Y/n]: ")))
     cleaned_answer <- tolower(trimws(make_plots))
 
     if (cleaned_answer %in% c("y", "yes")) {
         cli_alert_warning(paste0(
             "All figures are automatically saved as .pdf inside '", 
-            MAPS_PATH, "' ."))
+            EXPLORE_PATH, "' ."))
         cli_alert_info("Showing plots to the user.")
 
         explore_dataset(
@@ -80,6 +86,8 @@ save_exploration <- function() {
             x_cols = EXPLORE_COLUMNS, 
             save_folder = EXPLORE_PATH, 
             save_name = "concat")
+    } else {
+        cli_alert_info("Skipping datasets exploration plots.")
     }
 }
 
@@ -165,6 +173,7 @@ cli_alert_success("Datasets loaded!\n\n")
 
 ##### Analysis of env variables ##### -----------------------------------------
 cli_alert_info("Analysis of env variables...")
+
 env_df <- as.data.frame(envs_raster)
 
 ### PCA
@@ -211,4 +220,5 @@ standardised_ggplot_save(
 write_csv(
     rank_occurence_plot$occ_table, 
     file.path(EXPLORE_PATH, "rank-occurence_stoc.csv"))
-cli_alert_success("Plots are ready!\n\n")
+
+cli_alert_success("File '2-data_analysis.R' finished running!\n\n")

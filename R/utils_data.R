@@ -30,11 +30,13 @@ source(here::here("data/config/config.R")) # all parameters are grouped together
 #       interactive session (check with Sys.info()["user"] in remote terminal).
 # RETURNS:
 #   - a string with the user answer or auto "Yes" when on a remote machine.
-typeline <- function(prompt, remote_username = "") {
+typeline <- function(prompt, remote_username = "", default_remote_behaviour = "No") {
     if (Sys.info()["user"] == remote_username) {
         # auto-accept on cluster runs
-        cli_alert_warning("Cluster detected: automatic authorisation.")
-        txt <- "Yes"
+        cli_alert_warning(
+            paste0("Cluster detected: automatic answer: '", 
+                   default_remote_behaviour, "'."))
+        txt <- default_remote_behaviour
     } else if (interactive() ) {
         txt <- readline(prompt)
     } else {
@@ -51,23 +53,28 @@ typeline <- function(prompt, remote_username = "") {
 #       interactive session (check with Sys.info()["user"] in remote terminal).
 # RETURNS:
 #   - a boolean (TRUE to authorize, FALSE to refuse).
-authorize_overwrite <- function(path, remote_username = REMOTE_USERNAME) {
+authorise_overwrite <- function(
+    path, remote_username = REMOTE_USERNAME, default_remote_behaviour = "No") {
     # if file does not exist, no overwrite needed, return TRUE
     if (!file.exists(path)) {
         return(TRUE)
-    } else { 
+    } else if (dir.exists(path) && (length(list.files(path, all.files = TRUE, no.. = TRUE)) == 0)) {
+        # is an empty folder (then no worries, we overwrite nothing)
+        return(TRUE)
+    }else { 
         # if file exist, ask user for what needs to be done
         user_input <- typeline(
             prompt = paste0(" Overwrite `", path, "`? [Y/n]: "),
-            remote_username = remote_username)
+            remote_username = remote_username,
+            default_remote_behaviour = default_remote_behaviour)
         cleaned_input <- tolower(trimws(user_input))
 
         if (cleaned_input %in% c("y", "yes")) {
-            cli_alert_info("User authorized process to overwrite.")
+            cli_alert_info("User authorized process to overwrite file(s).")
             return(TRUE)
 
         } else if (cleaned_input %in% c("n", "no")) {
-            cli_alert_info("User refused to allow process to overwrite.")
+            cli_alert_info("User refused to allow process to overwrite file(s).")
             return(FALSE)
 
         } else {
@@ -243,7 +250,7 @@ average_monthly_quantitative_rasters <- function(
         res_km = RES_KM) {
     cli_alert_info("Aggregation of monthly data.")
     
-    if (!authorize_overwrite(save_to)) {
+    if (!authorise_overwrite(save_to)) {
         # Check if file exists
         cli_alert_warning(paste0(
             "Skipping pre-processing of monthly '", 
@@ -286,7 +293,7 @@ average_monthly_quantitative_rasters <- function(
 # RETURNS:
 #   - a sf object, the dataframe with its added features (= columns)
 save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
-    if (!authorize_overwrite(save_to)) {
+    if (!authorise_overwrite(save_to)) {
         # Check if file exists
         cli_alert_warning(paste0("Skipping the addition of features to ", 
         basename(save_to), ".\n\n"))
@@ -423,7 +430,7 @@ create_master_files_features <- function(
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX
     ) {
-    if (!authorize_overwrite(save_to)) {
+    if (!authorise_overwrite(save_to)) {
         # Check if file exists
         cli_alert_warning(paste0(
             "Skipping the creation of a raster containing containing all the ",
@@ -1112,7 +1119,7 @@ save_simplified_clc <- function(
     
     # load and simplify CORINE raster
     cli_alert_info("Simplification of CLC2018 raster.")
-    if (!authorize_overwrite(save_to)) {
+    if (!authorise_overwrite(save_to)) {
         # Check if file exists
         cli_alert_warning("Skipping simplification of CLC2018.\n\n")
 
@@ -1232,7 +1239,7 @@ standardized_raster_projection <- function(
         "_projection_france_res", res_km,"km-WGS84",
         ".tif")
         
-    if (!authorize_overwrite(raster_reprojected_path)) {
+    if (!authorise_overwrite(raster_reprojected_path)) {
         # Check if file exists
         cli_alert_warning("Skipping pre-processing of raster.\n\n")
 
@@ -1275,7 +1282,7 @@ standardized_hexagonal_projection <- function(
         ".gpkg")
 
 
-    if (!authorize_overwrite(shapefile_hexagons_path)) {
+    if (!authorise_overwrite(shapefile_hexagons_path)) {
         # Check if file exists
         cli_alert_warning("Skipping pre-processing.\n\n")
 

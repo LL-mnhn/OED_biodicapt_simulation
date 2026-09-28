@@ -249,4 +249,4 @@ if (length(list.files(RAW_DATA_PATH)) == 0) {
     . <- check_species_data()
 }
 
-
+cli_alert_success("File '0-verify_datasets.R' finished running!\n\n")

@@ -556,7 +556,15 @@ rank_occurence_curves <- function(
 
     # Add simulation curves (if there was some)
     if (!is.null(list_dfs) && !is.null(list_sp_names)) {
+        if (length(list_dfs) > length(PALETTE)) {
+            # quick check because i know myself, I won't do it right each time
+            stop(paste0(
+                "PALETTE has only ", length(PALETTE), 
+                " colors, list_dfs needs ", length(list_dfs),"."))
+        }
+
         list_occ_freq_tables <- list()
+
         for (local_df in list_dfs) {
             clean_local_df <- local_df |> drop_na()
 

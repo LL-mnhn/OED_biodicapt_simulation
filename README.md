@@ -44,6 +44,9 @@ cd /your/local/folder
 git clone https://github.com/LL-mnhn/OED_biodicapt_simulation.git
 ```
 
+> [!IMPORTANT]
+> Make sure you have [git-lfs](https://git-lfs.com/) installed before cloning the repository. Some large files might need to get downloaded manually if it is not installed before.
+
 2\. Install dependencies
 
 Open the `OED_biodicapt_simulation` folder as a new session in [Rstudio](https://docs.posit.co/ide/user/) or [Positron](https://positron.posit.co/welcome.html). Use R 4.6.1 (version used during development) 
@@ -53,6 +56,14 @@ Install `renv` if not already installed on your machine. Then run:
 install.packages("renv")
 renv::restore()
 ```
+
+> [!NOTE]
+> The `rnaturalearthhires` might sometimes not install properly through `renv`. If you get an error try to install it manually with: 
+> ```R
+> install.packages("pak", repos = "https://cloud.r-project.org")
+> pak::pkg_install("ropensci/rnaturalearthhires")
+> ```
+
 
 3\. Once your environment is ready, local scripts can be run. E.g.
 

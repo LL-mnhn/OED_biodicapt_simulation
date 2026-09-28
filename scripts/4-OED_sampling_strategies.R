@@ -17,6 +17,14 @@ suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))
 ##### Parameters ##### --------------------------------------------------------
 source(here::here(file.path("data","config","config.R"))) # Global parameters
 
+if (authorise_overwrite(RESULTS_PATH)) {
+    unlink(RESULTS_PATH, recursive = TRUE)
+    dir.create(RESULTS_PATH)
+} else {
+    stop("User refused to overwrite previous model's runs.")
+}
+
+
 ### Variables
 X_VARIABLES <- c(
     "chelsa_hurs", "chelsa_pr", "chelsa_tas", "ndvi", "light_pollution", 
@@ -340,6 +348,3 @@ for (k in seq(K_FOLDS)) {
 }
 cli_status_clear(status_msg)
 cli_alert_success("Simulated species are ready!")
-
-
-# TODO analyses of results (in another script)
