@@ -58,7 +58,7 @@ renv::restore()
 ```
 
 > [!NOTE]
-> The `rnaturalearthhires` might sometimes not install properly through `renv`. If you get an error try to install it manually with: 
+> The `rnaturalearthhires` package might sometimes not install properly through `renv`. If you get an error try to install it manually with: 
 > ```R
 > install.packages("pak", repos = "https://cloud.r-project.org")
 > pak::pkg_install("ropensci/rnaturalearthhires")

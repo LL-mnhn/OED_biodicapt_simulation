@@ -314,7 +314,13 @@ for (k in seq(K_FOLDS)) {
         if (file.exists(local_path_results)) {
             stop("Error, model folder already exists!")
         } else {
+            # create
             dir.create(local_path_results, recursive = TRUE)
+            # save parameters for this run (same as in name but easier to access)
+            write_csv(
+                local_parameters, 
+                file.path(local_path_results, "local_parameters.csv"))
+
         }
 
 
