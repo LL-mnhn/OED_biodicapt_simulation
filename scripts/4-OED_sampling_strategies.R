@@ -313,7 +313,7 @@ for (k in seq(K_FOLDS)) {
             local_parameters_extended <- c(as.list(local_parameters), list(k = k))
             saveRDS(
                 local_parameters_extended, 
-                file.path(local_path_results, "local_parameters.csv"))
+                file.path(local_path_results, "local_parameters.rds"))
 
         }
 
