@@ -13,10 +13,10 @@ library(terra)
 #   - x: a list or an object containing SpatRasters
 # RETURNS:
 #   - the same object with PackedSpatRaster replacing SpatRasters
-wrap_simulations <- function(simulations) {
+wrap_simulations <- function(data) {
   rapply(
-    simulations,
-    function(x) if (inherits(x, "SpatRaster")) terra::wrap(x) else x,
+    data,
+    function(x) if (inherits(x, c("SpatRaster", "SpatVector"))) terra::wrap(x) else x,
     how = "replace"
   )
 }
@@ -28,10 +28,10 @@ wrap_simulations <- function(simulations) {
 #   - x: a list or an object containing PackedSpatRaster
 # RETURNS:
 #   - the same object with SpatRasters replacing PackedSpatRaster
-unwrap_simulations <- function(simulations_wrapped) {
+unwrap_simulations <- function(data_wrapped) {
   rapply(
-    simulations_wrapped,
-    function(x) if (inherits(x, "PackedSpatRaster")) terra::unwrap(x) else x,
+    data_wrapped,
+    function(x) if (inherits(x, c("PackedSpatRaster", "PackedSpatVector"))) terra::unwrap(x) else x,
     how = "replace"
   )
 }

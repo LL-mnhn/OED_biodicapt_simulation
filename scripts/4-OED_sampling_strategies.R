@@ -278,13 +278,18 @@ optimise_model_training <- function(
 param_grid <- build_param_grid(EFFECTS)
 total_loops <- nrow(param_grid) * K_FOLDS
 datasets <- prepare_datasets()
+# save for later usage
+saveRDS(
+    wrap_simulations(datasets), 
+    file = file.path(RESULTS_PATH, "datasets.rds"))
+
 
 
 ##### Running model ##### -----------------------------------------------------
 cli_alert_info("------------ Fitting models ------------\n\n")
 for (k in seq(K_FOLDS)) {
     for (p in seq_len(nrow(param_grid))) {
-        cli_alert_info("[k-fold {k}/{K_FOLDS}]: Run {p} of {nrow(param_grid)}")
+        cli_alert_info("---- [k-fold {k}/{K_FOLDS}]: Run {p} of {nrow(param_grid)} ----")
         
         # In each run, we use simulated data:
         #   - we train on "BIODICAPT" simulations
