@@ -354,7 +354,6 @@ predict_hmsc <- function(hM, df, x_variables, id_column = "row_id") {
     }
 }
 
-
 # A function that computes the uncertainty of a Hmsc model on its predictions.
 # Uncertainty can be defined in many different ways. Here, uncertainty refers
 # to the average of the standard deviation accross observed species
@@ -525,4 +524,51 @@ convergence_hmsc <- function(hM, nchains, thin, save_folder) {
     }
     cat("\n")
     return(NULL)
+}
+
+# A function to display XX and XY associations, as well as Variance partitions
+# after fitting a Hmsc model.
+# ARGS:
+#   - hM: a fitted Hmsc model object.
+#   - save_folder: a string. The path where plotted PDFs will be saved.
+#   - x_groups_cats: a list of integers. For each x variable, 
+#       a number assigning it to a group (for variance partitioning)
+#   - x_groups_names: a list of strings. 
+#       A label for each number in x_groups_cat.
+#   - supportLevel: a numeric between 0 and 1. 
+#       The minimum confidence to display results (default is 0.95)
+# RETURNS:
+#   - NULL, saves plots to save_folder without printing them.
+analyses_hmsc <- function(
+        hM, save_folder, x_groups_cats, x_groups_names, supportLevel = 0.95) {
+    # X-Y associations
+    for (param in c("Beta", "Omega")) {
+        if (is.null(hM$ranLevels) & (param=="Omega")){
+            next
+        }
+        post_association = getPostEstimate(hM, parName = param)
+        XY_grid <- ggplot_custom_plotBeta(
+            hM, post = post_association, supportLevel = supportLevel)
+        standardised_ggplot_save(
+            figure = XY_grid, 
+            save_path = file.path(save_folder, paste0(param, "_XY_associations.pdf")))
+    }
+
+    if (!is.null(hM$ranLevels)) {
+        rand_XX_grid <- ggplot_custom_random_corr_associations(
+            hM, supportLevel = supportLevel)
+        standardised_ggplot_save(
+            figure = rand_XX_grid, 
+            save_path = file.path(save_folder, "random_XX_associations.pdf"))
+    }
+    
+    # Variance partitionning 
+    vp = computeVariancePartitioning(
+        hM, 
+        group = x_groups_cats, # c(1,2,2)
+        groupnames = x_groups_names) # c("habitat","climate"))
+    variance_bars <- ggplot_custom_plotVariancePartitioning(hM, VP = vp)
+    standardised_ggplot_save(
+        figure = variance_bars, 
+        save_path = file.path(save_folder, "variance_partitioning.pdf"))
 }

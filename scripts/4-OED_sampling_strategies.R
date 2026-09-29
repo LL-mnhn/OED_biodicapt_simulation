@@ -61,7 +61,7 @@ EFFECTS <- list(
             "10-part-simplified-I-optimality")
     )
 )
-REFERENCE_EFFECTS <- EFFECTS[1][[1]] # must be defined, cannot run without
+REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
 
 
 ##### Local functions ##### ---------------------------------------------------
@@ -212,7 +212,7 @@ optimise_model_training <- function(
         nchar(strategy))
     n_new_samples_per_part <- split_evenly(params$NEW_SAMPLE_SIZES, n_parts)
     
-    if (grepl("uncertainty", strategy)) {
+    if (grepl("simplified-I-optimality", strategy)) {
         # when using uncertainty model, we need to have an initial model to
         # compute the uncertainty on. For that, we can use the BASE_MODEL
         previous_model <- readRDS(
@@ -282,16 +282,9 @@ datasets <- prepare_datasets()
 
 ##### Running model ##### -----------------------------------------------------
 cli_alert_info("------------ Fitting models ------------\n\n")
-status_msg <- cli_status(paste0(
-    "[k-fold {1}/{K_FOLDS}]: Run {1} of {nrow(param_grid)}..."))
-
 for (k in seq(K_FOLDS)) {
     for (p in seq_len(nrow(param_grid))) {
-        cli_status_update(
-            status_msg, 
-            paste0(
-                "[k-fold {1}/{K_FOLDS}]: Run {1} of {nrow(param_grid)}")
-        )
+        cli_alert_info("[k-fold {k}/{K_FOLDS}]: Run {p} of {nrow(param_grid)}")
         
         # In each run, we use simulated data:
         #   - we train on "BIODICAPT" simulations
@@ -299,12 +292,7 @@ for (k in seq(K_FOLDS)) {
         #   - we use "STOC" simulations as test data
 
         # 0. Load parameters
-        cli_status_update(
-            status_msg, 
-            paste0(
-                "[k-fold {1}/{K_FOLDS}]: Run {1} of {nrow(param_grid)}",
-                " - Loading parameters...")
-        )
+        cli_alert_info("Loading parameters...")
         local_parameters <- param_grid[p, ]
         local_path_results <- make_run_path(
             folder = RESULTS_PATH, 
@@ -317,20 +305,16 @@ for (k in seq(K_FOLDS)) {
             # create
             dir.create(local_path_results, recursive = TRUE)
             # save parameters for this run (same as in name but easier to access)
-            write_csv(
-                local_parameters, 
+            local_parameters_extended <- c(as.list(local_parameters), list(k = k))
+            saveRDS(
+                local_parameters_extended, 
                 file.path(local_path_results, "local_parameters.csv"))
 
         }
 
 
         # 1. Fit model
-        cli_status_update(
-            status_msg, 
-            paste0(
-                "[k-fold {1}/{K_FOLDS}]: Run {1} of {nrow(param_grid)}",
-                " - Fitting model...")
-        )
+        cli_alert_info("Fitting model...")
         opt_model <- optimise_model_training(
             training_set = datasets[[k]]$train, 
             remaining_pool = datasets[[k]]$new_pool,
@@ -339,18 +323,15 @@ for (k in seq(K_FOLDS)) {
 
         
         # 2. Analysis of convergence
-        cli_status_update(
-            status_msg, 
-            paste0(
-                "[k-fold {1}/{K_FOLDS}]: Run {1} of {nrow(param_grid)}",
-                " - Convergence diagnostics...")
-        )
+        cli_alert_info("Compiling convergence diagnostics...")
         . <- convergence_hmsc(
             hM = opt_model, 
             nchains = NCHAINS, 
             thin = THIN, 
             save_folder = local_path_results)
+        
+        cli_alert_success("Run complete!\n\n")
     }
 }
-cli_status_clear(status_msg)
-cli_alert_success("Simulated species are ready!")
+
+cli_alert_success("Simulated species are ready!\n\n")

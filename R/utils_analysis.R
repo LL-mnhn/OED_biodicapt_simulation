@@ -1,6 +1,6 @@
 # Set of utility functions used to analyse data.
 
-##### Liraries #####
+##### Liraries ##### ----------------------------------------------------------
 library(cli)
 library(ade4)
 library(uwot)
@@ -17,12 +17,12 @@ library(ggcorrplot)
 library(RColorBrewer)
 
 
-##### Parameters #####
+##### Parameters ##### --------------------------------------------------------
 source(here::here("data/config/config.R")) # all parameters are grouped together
 source(here::here("R/utils_figures.R"))  # needs my_custom_ggplot_theme, standardised_ggplot_save
 
 
-##### Global functions #####
+##### Global functions ##### --------------------------------------------------
 # A function to summarise the significance of a p-value
 # ARGS:
 #   - p: a numeric, the p-value to evaluate.
@@ -520,7 +520,7 @@ make_umap_and_plots <- function(
     return(list(umap = umap_res, plot_ind = p_ind, embedding_full = emb))
 }
 
-##### Ecology functions #####
+##### Ecology functions ##### -------------------------------------------------
 # A function that computes occurence rank curves from a dataframe of presence
 # absence data.
 # ARGS:

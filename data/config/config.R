@@ -29,6 +29,7 @@ EXPLORE_PATH <- file.path(WORK_DIR, "outputs", "data_exploration")
 FIGURES_PATH <- file.path(WORK_DIR, "outputs", "figures")
 SIMULATE_PATH <- file.path(WORK_DIR, "outputs", "simulations")
 RESULTS_PATH <- file.path(WORK_DIR, "outputs", "results")
+ANALYSES_PATH <- file.path(WORK_DIR, "outputs", "results_analyses")
 
 
 ### File paths ----------------------------------------------------------------

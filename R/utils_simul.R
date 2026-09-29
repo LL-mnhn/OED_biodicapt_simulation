@@ -1,9 +1,11 @@
 # Set of utility functions used to help species simulations (virtualspecies)
 
-##### Liraries #####
+##### Liraries ##### ----------------------------------------------------------
+library(cli)
 library(terra)
 
-##### Global functions #####
+
+##### Global functions ##### --------------------------------------------------
 # A function to "wrap" SpatRasters, which enables saving them.
 # By default, they are stored using C++ external pointers 
 # which cannot be accessed after saving.

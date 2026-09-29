@@ -1,6 +1,6 @@
 # Set of functions used to plot harmonised figures
 
-##### Liraries #####
+##### Liraries ##### ----------------------------------------------------------
 library(colorspace)
 library(dotwhisker)
 library(tidyterra)
@@ -23,11 +23,11 @@ library(sf)
 options(bitmapType = "cairo")
 source(here::here("R/utils_data.R")) 
 
-##### Parameters #####
+##### Parameters ##### --------------------------------------------------------
 source(here::here("data/config/config.R")) # all parameters are grouped together
 source(here::here("R/utils_data.R"))  # needs get_metropolitan_france_shapefile
 
-##### Global functions #####
+##### Global functions ##### --------------------------------------------------
 # A wrapper to create a custom ggplot theme 
 # ARGS:
 #   - figure: a ggplot object.
@@ -152,7 +152,7 @@ ggplot_bars <- function(df, x, category = NULL, bins = 10, breaks = NULL, underl
 }
 
 
-##### Maps functions #####
+##### Maps functions ##### ----------------------------------------------------
 # A function that creates a simple background map of france in ggplot2
 # ARGS:
 #   - borders_type: a string. Either "national" (default) or "regional". 
@@ -480,4 +480,125 @@ ggplot_quantitative_df_on_background_map <- function(
         )
         return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
     }
+}
+
+
+##### HMSC interpretation ##### -----------------------------------------------
+
+# A function that mimicks Hmsc::plotBeta
+# ARGS:
+#   - hM: a fitted Hmsc model object.
+#   - post: post posterior summary of Beta parameters obtained from getPostEstimate().
+#   - supportLevel: a numeric threshold for plotting, values between 0.5 and 1 (default 0.95).
+# RETURNS:
+#   - a ggplot object.
+ggplot_custom_plotBeta <- function(hM, post, supportLevel = 0.95) {
+  
+    # Reproduce the Support calculation from source
+    betaP  <- post$support
+    toPlot <- 2 * betaP - 1
+    toPlot <- toPlot * ((betaP > supportLevel) + (betaP < (1 - supportLevel)) > 0)
+    betaMat <- matrix(toPlot, nrow = hM$nc, ncol = ncol(hM$Y))
+
+    rownames(betaMat) <- hM$covNames
+    colnames(betaMat) <- hM$spNames
+
+    # Long format for ggplot
+    df <- as.data.frame(as.table(betaMat))
+    colnames(df) <- c("Covariate", "Species", "value")
+
+    plot <- ggplot(df, aes(x = Covariate, y = Species, fill = value)) +
+        geom_tile(color = "grey90") +
+        scale_fill_gradient2(
+            low     = PALETTE[3],
+            mid     = "white",
+            high    = PALETTE[1],
+            midpoint = 0,
+            limits  = c(-1, 1),
+            name    = "Support"
+        ) +
+        theme_minimal() +
+        theme(
+            axis.text.x  = element_text(angle = 90, hjust = 1, vjust = 0.5, face = "italic"),
+            axis.text.y  = element_text(face = "italic"),
+            panel.grid   = element_blank()
+        ) +
+        labs(
+            x = NULL, y = NULL, 
+            subtitle = paste0("Showing support levels >=", supportLevel, ".")) 
+
+    return(my_custom_ggplot_theme(plot, with_palette = FALSE) +
+        theme(axis.text.x = element_text(angle = 45, hjust=1)))
+}
+
+# A function that mimicks Hmsc::computeAssociations + Corplot
+# ARGS:
+#   - hM: a fitted Hmsc model object.
+#   - supportLevel: a numeric threshold for plotting, values between 0.5 and 1 (default 0.95).
+# RETURNS:
+#   - a ggplot object.
+ggplot_custom_random_corr_associations <- function(hM, supportLevel = 0.95) {
+    OmegaCor = computeAssociations(hM)
+    toPlot = ((OmegaCor[[1]]$support>supportLevel)
+        + (OmegaCor[[1]]$support<(1-supportLevel))>0)*OmegaCor[[1]]$mean
+
+    # Convert matrix to long format for ggplot
+    toPlot_df <- melt(toPlot)
+    colnames(toPlot_df) <- c("Var1", "Var2", "value")
+
+    plot <- ggplot(toPlot_df, aes(x = Var1, y = Var2, fill = value)) +
+        geom_tile(color = "white", linewidth = 0.3) +
+        scale_fill_gradient2(
+            low  = "blue",
+            mid  = "white",
+            high = "red",
+            midpoint = 0,
+            limits = c(-1, 1),
+            name = "Correlation"
+        ) +
+        scale_y_discrete(limits = rev(levels(factor(toPlot_df$Var2)))) + 
+        labs(subtitle = paste("random effect level:", fitted_model$rLNames[1])) +
+        theme_minimal() +
+        theme(
+            axis.text.x  = element_text(angle = 45, hjust = 1),
+            axis.text.y  = element_text(size = 8),
+            axis.title   = element_blank(),
+            plot.title   = element_text(hjust = 0.5),
+            panel.grid   = element_blank()
+        ) +
+        coord_fixed()
+
+    return(my_custom_ggplot_theme(plot, with_palette = FALSE) +
+        theme(axis.text.x  = element_text(angle = 45, hjust = 1)))
+}
+
+# A function that mimicks Hmsc::plotVariancePartitioning
+# ARGS:
+#   - hM: a fitted Hmsc model object.
+#   - VP: a matrix obtained from Hmsc::computeVariancePartitioning.
+# RETURNS:
+#   - a ggplot object.
+ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
+
+    # Build labels with means
+    if (!(length(fitted_model$rLNames) == 0)) {
+        labels <- c(VP$groupnames, paste0("Random: ", hM$rLNames))
+    } else {
+        labels <- c(VP$groupnames)
+    }
+    
+    means <- round(100 * rowMeans(VP$vals), 1)
+    labels <- paste0(labels, " (mean = ", means, ")")
+
+    # Long format
+    df <- as.data.frame(VP$vals)
+    df$Group <- factor(labels, levels = rev(labels))
+    df_long <- pivot_longer(df, -Group, names_to = "Species", values_to = "Proportion")
+
+    plot <- ggplot(df_long, aes(x = Species, y = Proportion, fill = Group)) +
+        geom_col() +
+        labs(x = "Species", y = "Variance proportion") 
+
+    return(my_custom_ggplot_theme(plot, with_palette = TRUE) +
+        theme(axis.text.x  = element_text(angle = 45, hjust = 1)))
 }

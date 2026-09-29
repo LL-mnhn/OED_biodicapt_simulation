@@ -1,6 +1,6 @@
 # Set of utility functions used accross scripts.
 
-##### Liraries #####
+##### Liraries ##### ----------------------------------------------------------
 library(sf)
 library(cli)
 library(readr)
@@ -17,11 +17,11 @@ library(rnaturalearth)
 library(exactextractr)
 
 
-##### Parameters #####
+##### Parameters ##### --------------------------------------------------------
 source(here::here("data/config/config.R")) # all parameters are grouped together
 
 
-##### Global functions #####
+##### Global functions ##### --------------------------------------------------
 # A function to ask for a inputs by a user, which works in both 
 # interactive (with user inputs) and batch mode (on remote cluster)
 # ARGS:
@@ -122,7 +122,7 @@ split_evenly <- function(number, divisions) {
 }
 
 
-##### Datasets #####
+##### Datasets ##### ----------------------------------------------------------
 # A function that "blurs" coordinate within a dataframe by randomly shifting
 #   each longitude and latitude coordinates.
 # ARGS:
@@ -686,7 +686,7 @@ get_master_raster <- function(mode = "raw", rm.lyr = NULL, rm.cor.lyr = NULL) {
 }
 
 
-##### Rasters/SF functions #####
+##### Rasters/SF functions ##### ----------------------------------------------
 # A function that creates an empty raster that matches France's extent (WGS 84)
 # ARGS:
 #   - res_km: an integer/a float. 
