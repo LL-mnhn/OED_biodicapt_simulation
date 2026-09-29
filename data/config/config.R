@@ -139,6 +139,13 @@ NAMES_SPECIES <- c(
 
 ### Simulations and Models ----------------------------------------------------
 K_FOLDS <- 10
+X_VARIABLES <- c(
+    "chelsa_hurs", "chelsa_pr", "chelsa_tas", "ndvi", "light_pollution", 
+    "distance.to.artificial.surfaces", "distance.to.arable.land",
+    "distance.to.permanent.crops", "distance.to.pastures", 
+    "distance.to.heterogeneous.agricultural.areas", "distance.to.wetlants",
+    "distance.to.forest.and.semi.natural.areas", "distance.to.water.bodies")
+NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
                        
 ### Plot styling --------------------------------------------------------------

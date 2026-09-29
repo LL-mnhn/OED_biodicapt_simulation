@@ -484,7 +484,6 @@ ggplot_quantitative_df_on_background_map <- function(
 
 
 ##### HMSC interpretation ##### -----------------------------------------------
-
 # A function that mimicks Hmsc::plotBeta
 # ARGS:
 #   - hM: a fitted Hmsc model object.
@@ -601,4 +600,163 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
 
     return(my_custom_ggplot_theme(plot, with_palette = TRUE) +
         theme(axis.text.x  = element_text(angle = 45, hjust = 1)))
+}
+
+# A function to compare scores between k_folds, subset and model type.
+# ARGS:
+#   - parent_folder: a string. 
+#       Path to parent of subfolders containing `{subset_name}_scores.csv`.
+#   - reference_model_combination: a list of single parameters. 
+#   - loop_model_combination: a list of parameters (single, 
+#       except one parameter, that is a vector of several elements).
+#   - loop_on: a string. The name of a parameter in a combination. 
+#       The parameter which has several values.
+#   - k_fold: a numeric. The number of cross-validation subsets to make. 
+#   - metric: a string. Metric to extract from file (MSE, RMSE, AUC or TjuR2).
+#   - subset_names: a list string. Usually c("train", "val", "test").
+#   - xlabel: a string. The xlabel for the plot (default is "Effect").
+#   - group_species: whether to take the mean 
+#       accross all k_folds and species (TRUE, default) or 
+#       only accross k_folds (FALSE).
+#   - species_names: names of species in CSV 
+#       (rownames are not available from csvs).
+#   - save_to: a string. Path which should end with .pdf. 
+#       If NULL, does not save pdf.
+boxplot_compare_scores <- function(
+        parent_folder,
+        reference_model_combination,
+        loop_model_combination,
+        loop_on,
+        k_fold,
+        metric = "MSE",
+        subset_names = c("train", "val", "test"),
+        xlabel = "Effect",
+        group_species = TRUE,
+        species_names = NULL,
+        save_to = NULL) {
+
+    # auto compute differences between reference scores and the other scores
+    diffs <- compute_score_diffs(
+        parent_folder, reference_model_combination, loop_model_combination,
+        loop_on, k_fold, metric, subset_names, group_species, species_names)
+    scores_df <- diffs$summary
+    raw_diffs_df <- diffs$raw_diffs
+
+    # load reference values for display in captions
+    refs_list <- list()
+    for (subset_name in subset_names) {
+        for (k in 1:k_fold) {
+            run_path <- make_run_path(
+                parent_folder, reference_model_combination, k)
+            refs <- load_metric_scores(run_path, subset_name, metric)
+
+            refs_list[[length(refs_list) + 1]] <- data.frame(
+                subset = subset_name,
+                k_fold = k,
+                scores = refs,
+                species = species_names,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    refs_df <- bind_rows(refs_list)
+    if (group_species) {
+        mean_refs_df <- refs_df |>
+            group_by(subset) |>
+            summarise(mean_score = mean(scores, na.rm = TRUE), .groups = "drop")
+    } else {
+        mean_refs_df <- refs_df |>
+            group_by(subset, species) |>
+            summarise(mean_score = mean(scores, na.rm = TRUE), .groups = "drop")
+    }
+
+    # just to be sure
+    if (!group_species) {
+        scores_df <- scores_df |> 
+            mutate(species = factor(species, levels = species_names))
+        raw_diffs_df <- raw_diffs_df |> 
+            mutate(species = factor(species, levels = species_names))
+    }
+
+    if (group_species) {
+        bottom_caption <- paste(
+            "Distribution of per-fold differences",
+            "(species-averaged within each fold, across k_fold).")
+    } else {
+        bottom_caption <- paste(
+            "Distribution of per-fold differences across k_fold, per species.")
+    }
+
+    # format formula to number of variables
+    temp_loop <- loop_model_combination
+    temp_loop$HMSC_XFORMULAS <- lapply(lapply(
+        temp_loop$HMSC_XFORMULAS, all.vars), length)
+    temp_ref <- reference_model_combination
+    temp_ref$HMSC_XFORMULAS <- lapply(lapply(
+        temp_ref$HMSC_XFORMULAS, all.vars), length)
+    
+    # add model type to caption
+    ref_type <- ""
+    model_type <- ""
+    for (param in names(temp_loop)) {
+        if (length(temp_loop[[param]]) > 1) {
+            model_type <- paste0(
+                model_type, tolower(param), "=see x-axis, ")
+        } else {
+            model_type <- paste0(
+                model_type, tolower(param), "=", temp_loop[[param]], ", ")
+        }
+        ref_type <- paste0(
+                ref_type, tolower(param), "=", temp_ref[[param]], ", ")
+    }
+    model_type <- paste0(substr(model_type, 1, nchar(model_type)-2), ".")
+    ref_type <- paste0(substr(ref_type, 1, nchar(ref_type)-2), ".")
+    bottom_caption <- paste0(
+        bottom_caption,
+        "\nReference: ", ref_type, 
+        ".\nCompared with: ", model_type)
+    
+    p <- ggplot(
+            raw_diffs_df, 
+            aes(y = diff_value, x = loop_element, fill = subset)) +
+        geom_boxplot(
+            position = position_dodge(width = 0.75), 
+            width = 0.6, 
+            outlier.shape = 16) +
+        labs(caption = bottom_caption, fill = "Subset") +
+        ylab(paste("Delta in average", metric)) +
+        xlab(xlabel) +
+        geom_hline(yintercept = 0, linetype = "dashed")
+
+    # add text for mean reference
+    if (group_species) {
+        ref_values <- paste0(mean_refs_df |> 
+            mutate(subset = factor(subset, levels = subset_names)) |>
+            arrange(subset) |>
+            mutate(label = paste0(subset, ": ", round(mean_score, 3))) |>
+            pull(label), collapse=", ")
+
+        p <- p + annotation_custom(
+            grob = grid::textGrob(
+                paste0("Reference scores: ", ref_values, "."),
+                x = unit(0, "npc"), y = unit(0, "npc"),
+                hjust = -0.02, vjust = -0.75,
+                gp = grid::gpar(
+                    fontsize = 9, fontface = "italic", lineheight = 0.8)
+            )
+        )
+    }
+
+    if (!group_species) p <- p + facet_wrap(~species, nrow = 1)
+
+    p <- my_custom_ggplot_theme(p)  +
+        scale_fill_manual(values = c(PALETTE[2], PALETTE[3], PALETTE[1])) +
+        scale_x_discrete(labels = abbreviate_loop_labels)
+
+    if (grepl("MSE", metric)) {
+        p <- p + scale_y_reverse()
+    }
+
+    finalize_plot(p, save_to, what = "data")
+    return(list(scores = scores_df, diffs = raw_diffs_df, plot = p))
 }

@@ -1,8 +1,11 @@
 # Set of functions used to create / handle / analyse models
 ##### Libraries ##### ---------------------------------------------------------
+library(cli)
 library(coda)
 library(Hmsc)
+library(tidyr)
 library(dplyr)
+library(abind)
 library(ggplot2)
 
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_figures.R"))))
@@ -571,4 +574,85 @@ analyses_hmsc <- function(
     standardised_ggplot_save(
         figure = variance_bars, 
         save_path = file.path(save_folder, "variance_partitioning.pdf"))
+}
+
+# A function that mimciks Hmsc::evaluateModelFit but can also work on 
+# non-training data.
+# ARGS :
+#   - hM: a Hmsc fitted model object.
+#   - y: a matrix of species observation ("ground truth").
+#   - predY: the predictions made by the model.
+# RETURNS:
+#   - a list of scores
+evaluateModelFitCustom <- function(hM, Y, predY) {
+
+    ns <- ncol(Y) # number of samples per observation/species
+    mPredY <- apply(predY, c(1, 2), mean) # mean prediction per obs/species
+
+    # Initialise metrics to compute
+    RMSE <- rep(NA, ns)     # RMSE (the lower the better)
+    AUC <- rep(NA, ns)      # AUC (the closer to 1, the better)
+    TjurR2 <- rep(NA, ns)   # Tjur R² (% of variance explained)
+    SD <- rep(NA, ns)
+
+    # For each sample
+    for (j in seq_len(ns)) {
+        sel <- !is.na(Y[, j])   # extract observations/species
+        obs <- Y[sel, j]        # get observed value
+        pred <- mPredY[sel, j]  # get predicted value
+
+        # compute RMSE / MSE
+        RMSE[j] <- sqrt(mean((obs - pred)^2))
+        
+
+        # compute variance (only obs needed)
+        SD[j] <- sd(pred)
+
+        # compute AUC (only meaningful if both 0s and 1s present)
+        if (length(unique(obs)) == 2) {
+            AUC[j] <- as.numeric(pROC::auc(obs, pred, quiet = TRUE))
+        }
+
+        # compute Tjur R2: difference in mean predicted probability between
+        # presences and absences
+        if (length(unique(obs)) == 2) {
+            TjurR2[j] <- mean(pred[obs == 1]) - mean(pred[obs == 0])
+        }
+    }
+
+    names(RMSE) <- names(SD) <- names(AUC) <- names(TjurR2) <- colnames(Y)
+    return(list(RMSE = RMSE, AUC = AUC, TjurR2 = TjurR2, SD = SD))
+}
+
+# A function to display convergence diagnostics for a Hmsc model.
+# ARGS:
+#   - hM: a fitted Hmsc model object.
+#   - data_set: a dataframe or SpatVector. 
+#       Must contain columns listed in x_cols and y_cols.
+#       Automatically removes rows containing NAs.
+#   - x_cols: a list of strings. The columns containing explanatory variables.
+#   - sp_cols: a list of strings. The columns containing species occurrences.
+# RETURNS:
+#   - a list of scores
+evaluate_hmsc_performances <- function(hM, data_set, x_cols, sp_cols) {
+    if (inherits(data_set, "SpatVector")) {
+        data_set <- as.data.frame(data_set)
+    } else if (!inherits(data_set, "data.frame")) {
+        stop("Class of data_set is not recognised.")
+    }
+
+    if (any(is.na(data_set))) {
+        # cli_alert_warning("NAs detected: rows with NAs will be excluded.")
+        data_set <- data_set |> drop_na()
+    }
+    
+    local_preds_list <- predict_hmsc(
+        hM = hM, 
+        df = data_set, 
+        x_variables = x_cols)
+    local_preds <- abind(local_preds_list, along = 3) # model predictions
+    local_Y <- as.matrix(data_set[sp_cols])           # actual observations
+    
+    # Extract metric by comparing predictions and observed values
+    evaluateModelFitCustom(hM = hM, Y = local_Y, predY = local_preds)
 }

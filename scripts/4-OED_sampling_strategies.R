@@ -26,13 +26,6 @@ if (authorise_overwrite(RESULTS_PATH)) {
 
 
 ### Variables
-X_VARIABLES <- c(
-    "chelsa_hurs", "chelsa_pr", "chelsa_tas", "ndvi", "light_pollution", 
-    "distance.to.artificial.surfaces", "distance.to.arable.land",
-    "distance.to.permanent.crops", "distance.to.pastures", 
-    "distance.to.heterogeneous.agricultural.areas", "distance.to.wetlants",
-    "distance.to.forest.and.semi.natural.areas", "distance.to.water.bodies")
-NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 FORMULA <- reformulate(X_VARIABLES)
 
 
@@ -62,6 +55,7 @@ EFFECTS <- list(
     )
 )
 REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
+saveRDS(EFFECTS, file.path(RESULTS_PATH, "effects.rds"))
 
 
 ##### Local functions ##### ---------------------------------------------------
@@ -270,7 +264,7 @@ optimise_model_training <- function(
             file.path(run_folder_path, "chains.rds"))
     }
 
-    return(fitted_model)
+    return(list(fitted_model = fitted_model, base_dataset = training_set))
 }
 
 
@@ -325,12 +319,15 @@ for (k in seq(K_FOLDS)) {
             remaining_pool = datasets[[k]]$new_pool,
             params = local_parameters, 
             run_k_fold = k, run_folder_path = local_path_results) 
-
-        
+        # Save extended training set 
+        saveRDS(
+            grep("train", opt_model$base_dataset$row_id, value = TRUE, invert = TRUE), 
+            file.path(local_path_results, "ID_new_samples.rds"))
+    
         # 2. Analysis of convergence
         cli_alert_info("Compiling convergence diagnostics...")
         . <- convergence_hmsc(
-            hM = opt_model, 
+            hM = opt_model$fitted_model, 
             nchains = NCHAINS, 
             thin = THIN, 
             save_folder = local_path_results)
