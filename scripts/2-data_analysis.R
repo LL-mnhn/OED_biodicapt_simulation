@@ -160,11 +160,7 @@ envs_raster <- get_master_raster(
 
 # species + environmental dataset (a sort of biased "ground truth")
 stoc_df <- fix_names(vect(STOC_OBS_FULL))
-
-# observation datasets 
-biodicapt_df <- fix_names(vect(BIODICAPT_OBS_FULL))
-eni500_df <- fix_names(vect(ENI500_OBS_FULL))
-cli_alert_success("Datasets loaded!\n\n")
+cli_alert_success("Dataset loaded!\n\n")
 
 
 ##### Full data summary ##### -------------------------------------------------

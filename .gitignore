@@ -22,8 +22,8 @@ data/preprocessed_data/*
 !data/preprocessed_data/HEX_2018_env-data_5km-WGS84.gpkg
 
 # Outputs results - only show 1st k-fold remove others manually
-outputs/results/model_*_k[2-9]/*
-outputs/results/model_*_k10/*
+outputs/results/model_*_[2-9]/*
+outputs/results/model_*_10/*
 MeSU_outputs/
 
 # Renv - can be rebuilt from renv.lock

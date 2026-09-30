@@ -126,7 +126,7 @@ split_evenly <- function(number, divisions) {
 # A function that "blurs" coordinate within a dataframe by randomly shifting
 #   each longitude and latitude coordinates.
 # ARGS:
-#   - df: a dataframe with gps coordinates.
+#   - df: a dataframe, sf object or SpatVector with gps coordinates.
 #   - x_lon: a string. The name of the column with longitude values.
 #   - y_lat: a string. The name of the colum with latitude values.
 #   - blur_km: an integer/a float. 
@@ -149,10 +149,14 @@ blur_coordinates <- function(
 
     # if sf object, remove geometry field (we're gonna make a new one)
     is_sf <- inherits(df, "sf")
+    is_sv <- inherits(df, "SpatVector")
     if (is_sf) {
         crs_orig <- sf::st_crs(df)
         geom_col <- attr(df, "sf_column")
         df <- sf::st_drop_geometry(df) 
+    } else if (is_sv) {
+        crs_orig <- terra::crs(df)
+        df <- as.data.frame(df)   # attributes only, geometry dropped
     }
   
     # Manual check of coordinate system (CRS 4326)
@@ -184,6 +188,13 @@ blur_coordinates <- function(
             df, coords = c(x_lon, y_lat), crs = crs_orig, remove = FALSE)
         names(df)[names(df) == "geometry"] <- geom_col
         st_geometry(df) <- geom_col
+    } else if (is_sv) {
+        df <- terra::vect(
+            df,
+            geom = c(x_lon, y_lat),
+            crs = crs_orig,
+            keepgeom = TRUE   # keeps the lon/lat columns as attributes, like remove = FALSE
+        )
     }
     return(df)
 }

@@ -47,10 +47,6 @@ envs_raster_subres <- get_master_raster(
 # species + environmental dataset (a sort of biased "ground truth")
 stoc_df <- fix_names(vect(STOC_OBS_FULL))
 
-# observation datasets 
-biodicapt_df <- fix_names(vect(BIODICAPT_OBS_FULL))
-eni500_df <- fix_names(vect(ENI500_OBS_FULL))
-
 # Other data precomputed in data-analysis
 env_pca <- readRDS(file.path(EXPLORE_PATH, "pca_data.rds"))
 stoc_occurences <- read_csv(

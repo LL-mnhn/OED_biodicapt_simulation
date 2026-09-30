@@ -44,6 +44,8 @@ my_custom_ggplot_theme <- function(figure, with_palette=TRUE, light=FALSE){
             base_family = FONT
         ) +
         theme(
+            aspect.ratio = 1,
+            
             # title and subtitle styling
             plot.title.position = "plot",
             plot.title = element_text(
@@ -70,7 +72,6 @@ my_custom_ggplot_theme <- function(figure, with_palette=TRUE, light=FALSE){
                 size = 11,
                 color = "#000000"
             ),
-            aspect.ratio = 1,
             
             # external grid
             axis.ticks = element_line(
@@ -159,13 +160,14 @@ ggplot_bars <- function(df, x, category = NULL, bins = 10, breaks = NULL, underl
 # RETURNS:
 #   - The transformed vector of strings
 abbreviate_labels <- function(x) {
-    sapply(strsplit(x, "-"), function(words) {
-        if (length(words) == 1) {
-            words
-        } else {
-            paste0(toupper(substr(words, 1, 1)), collapse = "")
-        }
-    })
+  sapply(strsplit(x, "-"), function(words) {
+    if (length(words) == 1) {
+      words
+    } else {
+      is_num <- grepl("^[0-9]+$", words)
+      paste0(ifelse(is_num, words, toupper(substr(words, 1, 1))), collapse = "")
+    }
+  })
 }
 
 ##### Maps functions ##### ----------------------------------------------------
@@ -262,6 +264,7 @@ ggplot_categorical_shapefile_on_background_map <- function(
 #   - unit: a string. A label that will be shown along the palette displayed.
 #   - limits: a vector of 2 values (optional). 
 #       Sets hard limits on the values considered by the palette.
+#   - cmap: a string or a custom colormap.
 #   - precision_auto_limits: when limits is NULL, precision of color scale 
 #       (values are rounded to closest precision_auto_limits)
 # RETURNS:
@@ -272,6 +275,7 @@ ggplot_quantitative_shapefile_on_background_map <- function(
         layer_name,
         unit="°C",
         limits=NULL,
+        cmap = "turbo",
         precision_auto_limits = 1e-5
     ) {
 
@@ -294,11 +298,11 @@ ggplot_quantitative_shapefile_on_background_map <- function(
             linewidth = 0.1) +
         scale_fill_continuous(
             na.value = "transparent", 
-            palette = "turbo",
+            palette = cmap,
             limits = c(low = low_limit, high = high_limit)) +
         scale_color_continuous(
             na.value = "transparent", 
-            palette = "turbo",
+            palette = cmap,
             limits = c(low = low_limit, high = high_limit)) +
         labs(x = "longitude", y = "latitude", fill = unit, color = unit) +
         coord_sf(
@@ -408,6 +412,7 @@ ggplot_categorical_df_on_background_map <- function(
 #       Sets a hard limits on the values considered by the palette.
 #   - precision_auto_limits: when limits is NULL, precision of color scale 
 #       (values are rounded to closest precision_auto_limits)
+#   - cmap: a string or a custom colormap.
 #   - col, size, shape, stroke : default markers for ggplot.
 #   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
 # RETURNS:
@@ -418,9 +423,11 @@ ggplot_quantitative_df_on_background_map <- function(
         lon_c = "LON",
         lat_c = "LAT",
         column = NULL,
+        facet_formula = NULL,
         unit = NULL,
         limits = NULL,
         precision_auto_limits = 1e-5,
+        cmap = "turbo",
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
@@ -457,11 +464,11 @@ ggplot_quantitative_df_on_background_map <- function(
             ) +
             scale_fill_continuous(
                 na.value = "transparent", 
-                palette = "turbo",
+                palette = cmap,
                 limits = c(low = low_limit, high = high_limit)) +
             scale_color_continuous(
                 na.value = "transparent", 
-                palette = "turbo",
+                palette = cmap,
                 limits = c(low = low_limit, high = high_limit)) +
             labs(
                 x = "longitude",
@@ -473,6 +480,10 @@ ggplot_quantitative_df_on_background_map <- function(
                 ylim = c(lat_min, lat_max))
         )
         
+        if (!is.null(facet_formula)) {
+            map_obs <- map_obs + facet_grid(facet_formula)
+        }
+
         return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
         
     } else {
@@ -640,6 +651,8 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
 #   - metric: a string. The name of a category in column "name".
 #   - x_var: a string. 
 #       The name of column in compare_scores, will be displayed on the x-axis.
+#   - x_order: a vector of string. Must contains all unique values in 
+#       compare_scores[[x_order]]. The order of the panels displayed.
 #   - panel_var: a string. 
 #       The name of column in compare_scores, will be displayed in different 
 #       panels on a 1-row grid of plots.
@@ -651,8 +664,11 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
 #   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
 compare_plot <- function(
         ref_scores = NULL, compare_scores = NULL, metric, diffs_scores = NULL,
-        x_var = NULL, fill_var = NULL, panel_var = NULL,
-        panel_order = NULL, group_species = TRUE, save_to = NULL) {
+        x_var = NULL, x_order = NULL,
+        fill_var = NULL, 
+        panel_var = NULL, panel_order = NULL, 
+        group_species = TRUE, 
+        save_to = NULL) {
 
     if (is.null(diffs_scores)) {
         # species is kept as a key only when not averaging over it
@@ -684,7 +700,11 @@ compare_plot <- function(
         diffs_df$.x <- factor("all")
         x_col <- ".x"
     } else {
-        diffs_df[[x_var]] <- factor(diffs_df[[x_var]])
+        diffs_df[[x_var]] <- if (is.null(x_order)) {
+            factor(diffs_df[[x_var]])
+        } else {
+            factor(diffs_df[[x_var]], levels = x_order)
+        }
         x_col <- x_var
     }
 
