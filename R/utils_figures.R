@@ -151,6 +151,22 @@ ggplot_bars <- function(df, x, category = NULL, bins = 10, breaks = NULL, underl
   return(my_custom_ggplot_theme(graph, with_palette = TRUE))
 }
 
+# A function that abbreviates hyphenated labels of a ggplot. A label containing 
+# a single word is left as-is, a multi-word (e.g. "foo-bar-baz") element 
+# becomes initials (e.g. "FBB").
+# ARGS:
+#   - x: a vector of string.
+# RETURNS:
+#   - The transformed vector of strings
+abbreviate_labels <- function(x) {
+    sapply(strsplit(x, "-"), function(words) {
+        if (length(words) == 1) {
+            words
+        } else {
+            paste0(toupper(substr(words, 1, 1)), collapse = "")
+        }
+    })
+}
 
 ##### Maps functions ##### ----------------------------------------------------
 # A function that creates a simple background map of france in ggplot2
@@ -604,159 +620,250 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
 
 # A function to compare scores between k_folds, subset and model type.
 # ARGS:
-#   - parent_folder: a string. 
-#       Path to parent of subfolders containing `{subset_name}_scores.csv`.
-#   - reference_model_combination: a list of single parameters. 
-#   - loop_model_combination: a list of parameters (single, 
-#       except one parameter, that is a vector of several elements).
-#   - loop_on: a string. The name of a parameter in a combination. 
-#       The parameter which has several values.
-#   - k_fold: a numeric. The number of cross-validation subsets to make. 
-#   - metric: a string. Metric to extract from file (MSE, RMSE, AUC or TjuR2).
-#   - subset_names: a list string. Usually c("train", "val", "test").
-#   - xlabel: a string. The xlabel for the plot (default is "Effect").
-#   - group_species: whether to take the mean 
-#       accross all k_folds and species (TRUE, default) or 
-#       only accross k_folds (FALSE).
-#   - species_names: names of species in CSV 
-#       (rownames are not available from csvs).
-#   - save_to: a string. Path which should end with .pdf. 
-#       If NULL, does not save pdf.
-boxplot_compare_scores <- function(
-        parent_folder,
-        reference_model_combination,
-        loop_model_combination,
-        loop_on,
-        k_fold,
-        metric = "MSE",
-        subset_names = c("train", "val", "test"),
-        xlabel = "Effect",
-        group_species = TRUE,
-        species_names = NULL,
-        save_to = NULL) {
+#   - ref_scores: a data.frame or tibble. 
+#       Must contain columns: 
+#           name (with metrics' names), 
+#           score (with metrics' values),
+#           sp (a list of species' names),
+#           k (for each k_fold).
+#   - compare_scores: a data.frame or tibble.
+#       Must contain columns: 
+#           name (with metrics' names), 
+#           score (with metrics' values),
+#           sp (a list of species' names),
+#           k (for each k_fold),
+#           x_var (see details below),
+#           panel_var (see details below).
+#   - diffs_scores: a data.frame or tibble.
+#       Default is NULL (computed from ref_scores and compare_scores).
+#       When given, skips computation and uses it directly.
+#   - metric: a string. The name of a category in column "name".
+#   - x_var: a string. 
+#       The name of column in compare_scores, will be displayed on the x-axis.
+#   - panel_var: a string. 
+#       The name of column in compare_scores, will be displayed in different 
+#       panels on a 1-row grid of plots.
+#   - panel_order: a vector of string. Must contains all unique values in 
+#       compare_scores[[panel_order]]. The order of the panels displayed.
+#   - group_species: a boolean. When TRUE (default) averages scores over all
+#       species. When FALSE, computes each species average over k_folds and
+#       displays a grid of panels with species in column and panel_var in row.
+#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
+compare_plot <- function(
+        ref_scores = NULL, compare_scores = NULL, metric, diffs_scores = NULL,
+        x_var = NULL, fill_var = NULL, panel_var = NULL,
+        panel_order = NULL, group_species = TRUE, save_to = NULL) {
 
-    # auto compute differences between reference scores and the other scores
-    diffs <- compute_score_diffs(
-        parent_folder, reference_model_combination, loop_model_combination,
-        loop_on, k_fold, metric, subset_names, group_species, species_names)
-    scores_df <- diffs$summary
-    raw_diffs_df <- diffs$raw_diffs
+    if (is.null(diffs_scores)) {
+        # species is kept as a key only when not averaging over it
+        sp_key    <- if (group_species) NULL else "sp"
+        join_keys <- c("k", panel_var, sp_key)
 
-    # load reference values for display in captions
-    refs_list <- list()
-    for (subset_name in subset_names) {
-        for (k in 1:k_fold) {
-            run_path <- make_run_path(
-                parent_folder, reference_model_combination, k)
-            refs <- load_metric_scores(run_path, subset_name, metric)
+        # 1. Reference: mean score per fold (and panel, and species if kept)
+        ref_summary <- ref_scores |>
+            filter(name == metric) |>
+            group_by(across(all_of(join_keys))) |>
+            summarise(ref_score = mean(score, na.rm = TRUE), .groups = "drop")
 
-            refs_list[[length(refs_list) + 1]] <- data.frame(
-                subset = subset_name,
-                k_fold = k,
-                scores = refs,
-                species = species_names,
-                stringsAsFactors = FALSE
-            )
-        }
-    }
-    refs_df <- bind_rows(refs_list)
-    if (group_species) {
-        mean_refs_df <- refs_df |>
-            group_by(subset) |>
-            summarise(mean_score = mean(scores, na.rm = TRUE), .groups = "drop")
+        # 2. Compared scores: mean per fold, x, fill, panel (and species)
+        compare_summary <- compare_scores |>
+            filter(name == metric) |>
+            group_by(across(all_of(c(join_keys, x_var, fill_var)))) |>
+            summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop")
+
+        # 3. Per-fold difference with the matching reference
+        diffs_df <- compare_summary |>
+            left_join(ref_summary, by = join_keys) |>
+            mutate(diff_score = avg_score - ref_score)
     } else {
-        mean_refs_df <- refs_df |>
-            group_by(subset, species) |>
-            summarise(mean_score = mean(scores, na.rm = TRUE), .groups = "drop")
+        diffs_df <- diffs_scores
     }
 
-    # just to be sure
-    if (!group_species) {
-        scores_df <- scores_df |> 
-            mutate(species = factor(species, levels = species_names))
-        raw_diffs_df <- raw_diffs_df |> 
-            mutate(species = factor(species, levels = species_names))
-    }
-
-    if (group_species) {
-        bottom_caption <- paste(
-            "Distribution of per-fold differences",
-            "(species-averaged within each fold, across k_fold).")
+    # dummy x so the boxplot still has a discrete position
+    if (is.null(x_var)) {
+        diffs_df$.x <- factor("all")
+        x_col <- ".x"
     } else {
-        bottom_caption <- paste(
-            "Distribution of per-fold differences across k_fold, per species.")
+        diffs_df[[x_var]] <- factor(diffs_df[[x_var]])
+        x_col <- x_var
     }
 
-    # format formula to number of variables
-    temp_loop <- loop_model_combination
-    temp_loop$HMSC_XFORMULAS <- lapply(lapply(
-        temp_loop$HMSC_XFORMULAS, all.vars), length)
-    temp_ref <- reference_model_combination
-    temp_ref$HMSC_XFORMULAS <- lapply(lapply(
-        temp_ref$HMSC_XFORMULAS, all.vars), length)
-    
-    # add model type to caption
-    ref_type <- ""
-    model_type <- ""
-    for (param in names(temp_loop)) {
-        if (length(temp_loop[[param]]) > 1) {
-            model_type <- paste0(
-                model_type, tolower(param), "=see x-axis, ")
+    # dummy fill so the boxplot still has a single group to colour
+    if (is.null(fill_var)) {
+        diffs_df$.fill <- factor("all")
+        fill_col <- ".fill"
+    } else {
+        diffs_df[[fill_var]] <- factor(diffs_df[[fill_var]])
+        fill_col <- fill_var
+    }
+
+    # ordered panel
+    if (!is.null(panel_var)) {
+        diffs_df[[panel_var]] <- if (is.null(panel_order)) {
+            factor(diffs_df[[panel_var]])
         } else {
-            model_type <- paste0(
-                model_type, tolower(param), "=", temp_loop[[param]], ", ")
+            factor(diffs_df[[panel_var]], levels = panel_order)
         }
-        ref_type <- paste0(
-                ref_type, tolower(param), "=", temp_ref[[param]], ", ")
     }
-    model_type <- paste0(substr(model_type, 1, nchar(model_type)-2), ".")
-    ref_type <- paste0(substr(ref_type, 1, nchar(ref_type)-2), ".")
-    bottom_caption <- paste0(
-        bottom_caption,
-        "\nReference: ", ref_type, 
-        ".\nCompared with: ", model_type)
-    
+
+    # 4. Caption, with reference means per panel
+    if (is.null(diffs_scores)) {
+        ref_means <- ref_summary |>
+            group_by(across(all_of(panel_var))) |>
+            summarise(m = mean(ref_score, na.rm = TRUE), .groups = "drop")
+
+        if (!is.null(panel_var)) {
+            if (!is.null(panel_order)) {
+                ref_means <- ref_means |>
+                    mutate(across(all_of(panel_var), ~ factor(.x, levels = panel_order))) |>
+                    arrange(across(all_of(panel_var)))
+            }
+            ref_text  <- paste0(ref_means[[panel_var]], ": ", round(ref_means$m, 3),
+                                collapse = ", ")
+            ref_label <- paste0(" (", panel_var, ")")
+        } else {
+            ref_text  <- as.character(round(ref_means$m, 3))
+            ref_label <- ""
+        }
+    }
+
+    if (group_species) {
+        bottom_caption <- "Distribution of per-fold differences (species-averaged within each fold, across k_fold)."
+    } else {
+        bottom_caption <- "Distribution of per-fold differences across k_fold, per species."
+    }
+    if (is.null(diffs_scores)) {
+        bottom_caption <- paste0(
+            bottom_caption,
+            "\nReference mean ", metric, ref_label, ": ", ref_text, "."
+        )
+        y_label <- "Delta in average "
+    } else {
+        y_label <- ""
+    }
+
+    # 5. Plot
+    n_fill <- nlevels(diffs_df[[fill_col]])
     p <- ggplot(
-            raw_diffs_df, 
-            aes(y = diff_value, x = loop_element, fill = subset)) +
-        geom_boxplot(
-            position = position_dodge(width = 0.75), 
-            width = 0.6, 
-            outlier.shape = 16) +
-        labs(caption = bottom_caption, fill = "Subset") +
-        ylab(paste("Delta in average", metric)) +
-        xlab(xlabel) +
+            diffs_df,
+            aes(y = diff_score, x = .data[[x_col]], fill = .data[[fill_col]])) +
+        geom_boxplot(position = position_dodge(width = 0.75),
+                    width = 0.6, outlier.shape = 16) +
+        labs(caption = bottom_caption,
+            fill = if (is.null(fill_var)) {
+                NULL 
+            } else {
+                fill_var |> str_replace_all("_", " ") |> str_to_sentence()
+            }
+        ) +
+        ylab(paste0(y_label, metric)) +
+        xlab(if (is.null(x_var)) {
+                NULL 
+            } else {
+                x_var |> str_replace_all("_", " ") |> str_to_sentence()
+            }
+        ) +
         geom_hline(yintercept = 0, linetype = "dashed")
 
-    # add text for mean reference
+    # faceting
     if (group_species) {
-        ref_values <- paste0(mean_refs_df |> 
-            mutate(subset = factor(subset, levels = subset_names)) |>
-            arrange(subset) |>
-            mutate(label = paste0(subset, ": ", round(mean_score, 3))) |>
-            pull(label), collapse=", ")
+        if (!is.null(panel_var)) {
+            p <- p + facet_wrap(vars(.data[[panel_var]]), nrow = 1)
+        }
+    } else {
+        p <- p + if (!is.null(panel_var)) {
+            facet_grid(rows = vars(.data[[panel_var]]), cols = vars(sp))
+        } else {
+            facet_grid(cols = vars(sp))
+        }
+    }
 
-        p <- p + annotation_custom(
-            grob = grid::textGrob(
-                paste0("Reference scores: ", ref_values, "."),
-                x = unit(0, "npc"), y = unit(0, "npc"),
-                hjust = -0.02, vjust = -0.75,
-                gp = grid::gpar(
-                    fontsize = 9, fontface = "italic", lineheight = 0.8)
-            )
+    p <- my_custom_ggplot_theme(p) +
+        scale_fill_manual(values = PALETTE[seq_len(n_fill)])
+    
+    if (is.null(fill_var)) p <- p + guides(fill = "none")
+
+    if (is.null(x_var)) {
+        p <- p + theme(axis.text.x = element_blank(),
+                       axis.ticks.x = element_blank())
+    } else {
+        p <- p + scale_x_discrete(labels = abbreviate_labels)
+    }
+
+    # lower is better for MSE/RMSE, so flip the axis
+    if ((grepl("MSE", metric) || grepl("SD", metric)) && (!grepl("Δ", metric))) {
+        p <- p + scale_y_reverse() 
+    } 
+
+    # Save and return results
+    if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
+    list(diffs = diffs_df, plot = p)
+}
+
+# A function to compare scores between k_folds, subset and model type.
+# ARGS:
+#   - ref_scores: a data.frame or tibble. 
+#       Must contain columns in group_vars, in panel_var, sp and metric.
+#   - compare_scores: a data.frame or tibble.
+#       Must contain columns in group_vars, in panel_var, sp and metric.
+#   - metric: a string. The name of a category in column "name".
+#   - diff_order: a booelan. Default is TRUE: lower values are better.
+#   - threshold: a numeric between 0 and 1. The relative increase in metric
+#       to qualify as improvement.
+#   - group_vars: a vector of string. The name of columns that are constants 
+#       in ref_df.
+#   - panel_var: a vector of string. The name of columns whose values appear 
+#       in both tibbles/dataframes.
+count_improving <- function(
+        ref_scores, compare_scores, metric,
+        diff_order = 1,
+        threshold = 0.01,
+        group_vars = NULL,
+        panel_var = NULL) {
+
+    # Species always kept: improvement is assessed per species
+    join_keys <- c("k", panel_var, "sp")
+
+    # 1. Reference: mean score per fold (and panel) and species
+    ref_summary <- ref_scores |>
+        filter(name == metric) |>
+        group_by(across(all_of(join_keys))) |>
+        summarise(ref_score = mean(score, na.rm = TRUE), .groups = "drop")
+
+    # 2. Compared: mean per fold, panel, species and grouping columns
+    compare_summary <- compare_scores |>
+        filter(name == metric) |>
+        group_by(across(all_of(c(join_keys, group_vars)))) |>
+        summarise(cmp_score = mean(score, na.rm = TRUE), .groups = "drop")
+
+    # 3. Per-fold, per-species relative improvement (lower is better)
+    if (!diff_order) {
+        order_dir = -1
+    } else {
+        order_dir = 1
+    }
+    per_sp <- compare_summary |>
+        left_join(ref_summary, by = join_keys) |>
+        mutate(rel_improvement = order_dir * (ref_score - cmp_score) / ref_score,
+               improved = rel_improvement >= threshold)
+
+    # 4. Count species above threshold
+    improved_sp <- per_sp |>
+        group_by(across(all_of(c(group_vars, panel_var, "k")))) |>
+        summarise(
+            n_sp_above = sum(rel_improvement > threshold, na.rm = TRUE),
+            n_sp_total = sum(!is.na(rel_improvement)),
+            .groups = "drop"
         )
-    }
+    # # 5. Average across k
+    # improved_sp |>
+    #     group_by(across(all_of(c(group_vars, panel_var)))) |>
+    #     summarise(
+    #         mean_n_above = mean(n_sp_above),
+    #         sd_n_above   = sd(n_sp_above),
+    #         mean_prop    = mean(n_sp_above / n_sp_total),
+    #         n_k          = n(),
+    #         .groups = "drop"
+    #     )
 
-    if (!group_species) p <- p + facet_wrap(~species, nrow = 1)
-
-    p <- my_custom_ggplot_theme(p)  +
-        scale_fill_manual(values = c(PALETTE[2], PALETTE[3], PALETTE[1])) +
-        scale_x_discrete(labels = abbreviate_loop_labels)
-
-    if (grepl("MSE", metric)) {
-        p <- p + scale_y_reverse()
-    }
-
-    finalize_plot(p, save_to, what = "data")
-    return(list(scores = scores_df, diffs = raw_diffs_df, plot = p))
 }

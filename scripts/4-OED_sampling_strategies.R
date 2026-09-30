@@ -336,4 +336,4 @@ for (k in seq(K_FOLDS)) {
     }
 }
 
-cli_alert_success("Simulated species are ready!\n\n")
+cli_alert_success("HMSC models are ready!\n\n")

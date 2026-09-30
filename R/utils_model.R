@@ -1,5 +1,6 @@
 # Set of functions used to create / handle / analyse models
 ##### Libraries ##### ---------------------------------------------------------
+library(sf)
 library(cli)
 library(coda)
 library(Hmsc)
@@ -329,9 +330,9 @@ predict_hmsc <- function(hM, df, x_variables, id_column = "row_id") {
 
     if ("spatial" %in% names(hM$ranLevels)) {
         # Format coordinates associated to each point
-        coords_sf <- sf::st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
-        coords_proj <- sf::st_transform(coords_sf, crs = 2154)
-        xy_new <- sf::st_coordinates(coords_proj)
+        coords_sf <- st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
+        coords_proj <- st_transform(coords_sf, crs = 2154)
+        xy_new <- st_coordinates(coords_proj)
         rownames(xy_new) <- as.character(df[[id_column]])
         colnames(xy_new) <- c("longitude_grid_2154", "latitude_grid_2154")
 
@@ -587,26 +588,29 @@ analyses_hmsc <- function(
 evaluateModelFitCustom <- function(hM, Y, predY) {
 
     ns <- ncol(Y) # number of samples per observation/species
-    mPredY <- apply(predY, c(1, 2), mean) # mean prediction per obs/species
+    mPredY <- apply(predY, c(1, 2), mean)  # mean prediction per obs/species
+    sdPredY <- apply(predY, c(1, 2), sd) # sd prediction per obs/species
+
 
     # Initialise metrics to compute
     RMSE <- rep(NA, ns)     # RMSE (the lower the better)
     AUC <- rep(NA, ns)      # AUC (the closer to 1, the better)
     TjurR2 <- rep(NA, ns)   # Tjur R² (% of variance explained)
-    SD <- rep(NA, ns)
+    SD <- rep(NA, ns)       # Standard Deviation (only uses predicted values)
 
     # For each sample
     for (j in seq_len(ns)) {
-        sel <- !is.na(Y[, j])   # extract observations/species
-        obs <- Y[sel, j]        # get observed value
-        pred <- mPredY[sel, j]  # get predicted value
+        sel <- !is.na(Y[, j])      # extract observations/species
+        obs <- Y[sel, j]           # get observed value
+        pred <- mPredY[sel, j]     # get predicted value
+        predSD <- sdPredY[sel, j]  # get predicted sd
 
         # compute RMSE / MSE
         RMSE[j] <- sqrt(mean((obs - pred)^2))
         
 
         # compute variance (only obs needed)
-        SD[j] <- sd(pred)
+        SD[j] <- mean(predSD)
 
         # compute AUC (only meaningful if both 0s and 1s present)
         if (length(unique(obs)) == 2) {
