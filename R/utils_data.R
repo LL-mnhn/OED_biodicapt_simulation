@@ -1068,50 +1068,136 @@ simplify_CLC <- function(
     return(clc_raster_collapsed)
 }
 
-# A function that transforms a layer of categorical values from a raster
-# into as many layers as there were categories in the original layer. Each
-# new layer contains a raster with each cell containing the distance to the 
-# closest category in the original raster.
+# A function that uses a raster layer of categorical values to generate
+# sub-layers : each sub-layer shows the distance of each cell to the closest 
+# category in the input raster layer. 
 # ARGS:
-#   - raster_layer: a SpatRaster containing a single layer.
+#   - raster_layer: a SpatRaster (single layer) of categorical values.
+#   - temp_dir: a temporary directory to save intermediary rasters
 # RETURNS:
 #   - a SpatRaster with one layer of distances per category in raster_layer.
-factorial_to_distance2factor <- function(raster_layer) {
-    # raster reprojection for faster computation
-    original_template <- raster_layer
-    r_proj <- project(raster_layer, "EPSG:3035", method = "near")
+factorial_to_distance2factor <- function(
+        raster_layer,
+        tmp_dir = tempdir()) {
 
-    # Get the category labels
-    cat_df <- levels(r_proj)[[1]]
-    cat_labels <- cat_df[[2]]
-    cat_codes  <- cat_df[[1]]
+    # Tell terra to be conservative with RAM and use disk
+    terraOptions(memfrac = 0.5, todisk = TRUE, tempdir = tmp_dir, progress = 1)
 
-    # 2. Create a mask layer for each category 
-    # (1 = category present, NA = everything else)
-    bin_stack <- segregate(
-        r_proj, classes = cat_codes, keep = TRUE, other = NA)
+    raster_clipped <- clip_raster_france_wgs84_crs(
+        raster_layer, buffer = 5*RES_KM, verbose = FALSE, save_to = NULL)
 
-    # rename to the readable labels
-    names(bin_stack) <- cat_labels
+    # Write projected raster to disk, as integers (CORINE codes are small ints)
+    r_proj <- project(raster_clipped, "EPSG:3035", method = "near",
+                      filename = file.path(tmp_dir, "r_proj.tif"),
+                      datatype = "INT2U", overwrite = TRUE)
+    rm(raster_clipped); gc()
 
-    # For each binary layer, compute distance to nearest non-NA cell
-    n <- nlyr(bin_stack)
-    dist_list <- vector("list", n)
+    present <- freq(r_proj)$value
+    present <- present[!is.na(present)]
+    n <- length(present)
 
+    # Process each class, writing each distance layer to its own file
+    dist_files <- character(n)
     for (i in seq_len(n)) {
-        lyr_name <- names(bin_stack)[i]
-        d <- distance(bin_stack[[i]])
-        names(d) <- paste0("distance to ", lyr_name)
-        dist_list[[i]] <- d
+        lab <- present[i]
+        cli_alert_info("Processing distances for category {i} of {n}")
+
+        m <- ifel(r_proj == lab, 1, NA,
+                  filename = file.path(tmp_dir, sprintf("m_%s.tif", lab)),
+                  datatype = "INT1U", overwrite = TRUE)
+
+        dist_files[i] <- file.path(tmp_dir, sprintf("dist_%s.tif", lab))
+        d <- distance(m, filename = dist_files[i],
+                      datatype = "FLT4S", overwrite = TRUE)
+        names(d) <- paste0("distance to ", lab)
+
+        rm(m, d); gc()
+        unlink(file.path(tmp_dir, sprintf("m_%s.tif", lab)))
     }
 
-    # Combine into one multi-layer SpatRaster
-    dist_stack <- rast(dist_list)
+    # Virtual stack: reads lazily from disk, no RAM cost
+    dist_stack <- rast(dist_files)
+    names(dist_stack) <- paste0("distance to ", present)
 
-    # raster reprojection to original crs
-    dist_stack <- project(dist_stack, original_template, method = "bilinear")
-    return(dist_stack)
+    # Project back to the original grid, writing to disk
+    out <- project(dist_stack, raster_layer, method = "bilinear",
+                   filename = file.path(tmp_dir, "dist_final.tif"),
+                   datatype = "FLT4S", overwrite = TRUE)
+    out
 }
+
+# A function that uses a raster layer of categorical values to generate
+# sub-layers : each sub-layer shows the proportion of cells surrounding each 
+# cell that belong to a category of the input raster layer.
+# ARGS:
+#   - raster_layer: a SpatRaster (single layer) of categorical values.
+#   - radius_m: a numeric. The radius in meters to check frequ of categories.
+#   - temp_dir: a temporary directory to save intermediary rasters
+# RETURNS:
+#   - a SpatRaster with one layer of proportion per category in raster_layer.
+factorial_to_proportion_radius <- function(
+        raster_layer,
+        radius_m,
+        tmp_dir = tempdir()) {
+
+    # Be conservative with RAM and use disk
+    terraOptions(memfrac = 0.5, todisk = TRUE, tempdir = tmp_dir, progress = 1)
+
+    # Clip with a buffer at least as large as the radius, to avoid edge effects
+    # (assumes `buffer` is in km, as in your original call)
+    raster_clipped <- clip_raster_france_wgs84_crs(
+        raster_layer,
+        buffer  = 5 * RES_KM,
+        verbose = FALSE, save_to = NULL)
+
+    # Project to a metric CRS so the radius is in meters
+    r_proj <- project(raster_clipped, "EPSG:3035", method = "near",
+                        filename = file.path(tmp_dir, "r_proj.tif"),
+                        datatype = "INT2U", overwrite = TRUE)
+    rm(raster_clipped); gc()
+
+    present <- freq(r_proj)$value
+    present <- present[!is.na(present)]
+    n <- length(present)
+
+    # Circular window: weight 1 inside the circle, NA outside.
+    # NA weights are ignored by focal(), so "mean" = proportion of valid
+    # pixels in the circle (NA pixels such as sea/outside the data are excluded).
+    w <- focalMat(r_proj, d = radius_m, type = "circle")
+    w[w > 0]  <- 1
+    w[w == 0] <- NA
+
+    prop_files <- character(n)
+    for (i in seq_len(n)) {
+        lab <- present[i]
+        cli_alert_info("Processing proportions for category {i} of {n}")
+
+        # 1 where the category is present, 0 elsewhere, NA kept where r_proj is NA
+        m_file <- file.path(tmp_dir, sprintf("m_%s.tif", lab))
+        m <- ifel(r_proj == lab, 1, 0,
+                filename = m_file, datatype = "INT1U", overwrite = TRUE)
+
+        prop_files[i] <- file.path(tmp_dir, sprintf("prop_%s.tif", lab))
+        p <- focal(m, w = w, fun = "mean", na.rm = TRUE,
+                filename = prop_files[i],
+                datatype = "FLT4S", overwrite = TRUE)
+
+        rm(m, p); gc()
+        unlink(m_file)
+    }
+
+    # Virtual stack, read lazily from disk
+    prop_stack <- rast(prop_files)
+    names(prop_stack) <- paste0("prop_", present, "_within_", radius_m, "m")
+
+    # Back to the original grid
+    out <- project(prop_stack, raster_layer, method = "bilinear",
+                    filename = file.path(tmp_dir, "prop_final.tif"),
+                    datatype = "FLT4S", overwrite = TRUE)
+    names(out) <- names(prop_stack)
+    out
+}
+
 
 # A function to automatically simplify CLC categories and reduce its extent.
 # ARGS:
@@ -1169,10 +1255,10 @@ save_simplified_clc <- function(
         cli_alert_info("Adding one layer per categories (distance layers)...")
         distance_layers <- factorial_to_distance2factor(simplified_clc_raster)
 
+        cli_alert_info("Stacking new layers together...")
         clc_stacked_raster <- rast(list(simplified_clc_raster, distance_layers))
         
         cli_alert_info("Saving file...")
-
         writeRaster(
             project(clc_stacked_raster, "EPSG:4326"),  
             save_to, overwrite = TRUE)

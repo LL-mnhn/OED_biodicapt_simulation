@@ -21,13 +21,13 @@ set -e
 START_TIME=$(date '+%Y-%m-%d %H:%M:%S %Z')
 START_SEC=$(date '+%s')
 
-# ## Run script (STEP 3)
-# rm -rf outputs/simulations/*
-# Rscript -e 'source(".Rprofile"); source("scripts/3-species_simulations.R")'
+## Run script (STEP 3)
+rm -rf outputs/simulations/*
+Rscript -e 'source(".Rprofile"); source("scripts/3-species_simulations.R")'
 
-# ## Run script (STEP 4)
-# rm -rf outputs/results/*
-# Rscript -e 'source(".Rprofile"); source("scripts/4-OED_sampling_strategies.R")'
+## Run script (STEP 4)
+rm -rf outputs/results/*
+Rscript -e 'source(".Rprofile"); source("scripts/4-OED_sampling_strategies.R")'
 
 ## Run script (STEP 5)
 rm -rf outputs/results_analysis/*

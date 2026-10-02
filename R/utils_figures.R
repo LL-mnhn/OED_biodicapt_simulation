@@ -20,6 +20,7 @@ library(lme4)
 library(cli)
 library(sf)
 
+
 options(bitmapType = "cairo")
 source(here::here("R/utils_data.R")) 
 
@@ -508,7 +509,6 @@ ggplot_quantitative_df_on_background_map <- function(
         return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
     }
 }
-
 
 ##### HMSC interpretation ##### -----------------------------------------------
 # A function that mimicks Hmsc::plotBeta

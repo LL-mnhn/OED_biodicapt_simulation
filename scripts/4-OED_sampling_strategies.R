@@ -278,7 +278,6 @@ saveRDS(
     file = file.path(RESULTS_PATH, "datasets.rds"))
 
 
-
 ##### Running model ##### -----------------------------------------------------
 cli_alert_info("------------ Fitting models ------------\n\n")
 for (k in seq(K_FOLDS)) {
@@ -308,9 +307,7 @@ for (k in seq(K_FOLDS)) {
             saveRDS(
                 local_parameters_extended, 
                 file.path(local_path_results, "local_parameters.rds"))
-
         }
-
 
         # 1. Fit model
         cli_alert_info("Fitting model...")

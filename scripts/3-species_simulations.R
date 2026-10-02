@@ -16,6 +16,7 @@ library(tidyterra)
 library(virtualspecies)
 
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))))
+suppressPackageStartupMessages(source(here::here(file.path("R", "utils_figures.R"))))
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_analysis.R"))))
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_simul.R"))))
 
@@ -27,6 +28,8 @@ REMOVE_LAYERS_FROM_MASTER <- c("CLC", "distance to NODATA")
 CORRELATED_LAYERS_IN_MASTER <- list(  # keep first name for each vector in list
     c("CHELSA_tas", "Elevation")
 ) 
+SHOW_SP <- 3 # picks this number of species in simulations to show their maps
+
 
 if (authorise_overwrite(SIMULATE_PATH)) {
     unlink(SIMULATE_PATH, recursive = TRUE)
@@ -34,6 +37,41 @@ if (authorise_overwrite(SIMULATE_PATH)) {
 } else {
     stop("User refused to overwrite previous simulations.")
 }
+
+
+##### Local functions ##### ---------------------------------------------------
+plot_virtualspecies_rasters <- function() {
+    idx_sp <- sample(seq(length(NAMES_SPECIES)), SHOW_SP)
+    layer_names <- c("sp_suitability", "sp_probability", "sp_observations")
+
+    for (sp in idx_sp) {
+        # the 3 rasters for this species
+        rasters <- lapply(
+            layer_names, 
+            function(l) simulations[[l]][[1]][[paste0("sp_", sp)]])
+
+        plots <- lapply(seq_along(rasters), function(i) {
+            p <- ggplot() +
+            geom_spatraster(data = rasters[[i]]) +
+            ggtitle(layer_names[i]) +
+            scale_fill_stepsn(
+                colours = GG_TERRAIN_PALETTE,
+                n.breaks = 9,
+                limits = c(0, 1)
+            )
+            my_custom_ggplot_theme(p, with_palette = FALSE)
+        })
+
+        combined <- wrap_plots(plots, nrow = 1, guides = "collect")
+        print(combined)
+        
+        standardised_ggplot_save(
+            combined, 
+            file.path(SIMULATE_PATH, paste0("simulation_sp", sp,"_k1.pdf")))
+    }
+}
+
+
 
 
 ##### Load datasets ##### -----------------------------------------------------
@@ -72,6 +110,7 @@ simulations <- simulate_from_PCA(
 saveRDS(
     wrap_simulations(simulations), 
     file = file.path(SIMULATE_PATH, "simulations.rds"))
+plot_virtualspecies_rasters()
 
 # compare occurences with stoc_df
 stoc_simulations <- list()

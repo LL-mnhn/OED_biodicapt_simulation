@@ -171,3 +171,7 @@ LIGHT_CUSTOM_SCALES <- list(
     scale_size_manual(values = SIZES),
     scale_discrete_manual(aesthetics = "stroke", values = STROKES)
 )
+
+GG_TERRAIN_PALETTE <- colorRampPalette(c(
+    "#f7f4f9", "#f7f4f9", "#e8a0a0", "#e8935a", "#e8c93a", 
+    "#8fc93a", "#2ca02c", "#22b0b0", "#22b0b0"))(10)

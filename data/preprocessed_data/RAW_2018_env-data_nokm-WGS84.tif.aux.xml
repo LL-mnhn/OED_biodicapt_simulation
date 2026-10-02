@@ -110,25 +110,25 @@
     <Description>distance to Artificial surfaces</Description>
   </PAMRasterBand>
   <PAMRasterBand band="3">
-    <Description>distance to Arable land</Description>
-  </PAMRasterBand>
-  <PAMRasterBand band="4">
-    <Description>distance to Permanent crops</Description>
-  </PAMRasterBand>
-  <PAMRasterBand band="5">
-    <Description>distance to Pastures</Description>
-  </PAMRasterBand>
-  <PAMRasterBand band="6">
-    <Description>distance to Heterogeneous agricultural areas</Description>
-  </PAMRasterBand>
-  <PAMRasterBand band="7">
     <Description>distance to Forest and semi-natural areas</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="8">
+  <PAMRasterBand band="4">
     <Description>distance to Wetlants</Description>
   </PAMRasterBand>
-  <PAMRasterBand band="9">
+  <PAMRasterBand band="5">
     <Description>distance to Water bodies</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="6">
+    <Description>distance to Arable land</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="7">
+    <Description>distance to Permanent crops</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="8">
+    <Description>distance to Pastures</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="9">
+    <Description>distance to Heterogeneous agricultural areas</Description>
   </PAMRasterBand>
   <PAMRasterBand band="10">
     <Description>distance to NODATA</Description>

@@ -13,6 +13,7 @@ library(purrr)
 library(ggplot2)
 library(ggExtra)
 library(stringr)
+library(patchwork)
 
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))))
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_figures.R"))))
@@ -157,6 +158,19 @@ envs_raster <- get_master_raster(
     mode = "raw", 
     rm.lyr = REMOVE_LAYERS_FROM_MASTER, 
     rm.cor.lyr = CORRELATED_LAYERS_IN_MASTER)
+# Save all layers to a figure
+plots <- lapply(names(envs_raster), function(n) {
+    p <- ggplot() + 
+        geom_spatraster(data = envs_raster[[n]]) + 
+        ggtitle(n) +
+        scale_fill_viridis_c(option = "magma") 
+        my_custom_ggplot_theme(p, with_palette = FALSE) +
+        theme(plot.title = element_text(size = 9))
+})
+standardised_ggplot_save(
+    wrap_plots(plots), 
+    file.path(EXPLORE_PATH, "env_raster_layers.pdf"), 
+    .width = 36, .height = 12)
 
 # species + environmental dataset (a sort of biased "ground truth")
 stoc_df <- fix_names(vect(STOC_OBS_FULL))

@@ -140,7 +140,30 @@ show_save_results <- function() {
     print(corine_plot_bis)
     standardised_ggplot_save(
         figure = corine_plot_bis, 
-        save_path = file.path(MAPS_PATH, "corine_hexagons.pdf"))          
+        save_path = file.path(MAPS_PATH, "corine_hexagons.pdf"))    
+    
+    for (variable in names(corine_shapefile)) {
+        if (tolower(variable) %in% X_VARIABLES) {
+            corine_plot_quanti <- ggplot_quantitative_shapefile_on_background_map(
+                background_map = ggplot_get_france_base_map("national"), 
+                shapefile = corine_shapefile,
+                layer_name = variable,
+                unit = paste0(
+                    "Distance (m)\nto closest ",
+                    paste(tolower(str_split(variable, "\\.")[[1]][-(1:2)]), collapse = " ")
+                )
+            )
+            print(corine_plot_quanti)
+            standardised_ggplot_save(
+                figure = corine_plot_bis, 
+                save_path = file.path(
+                    MAPS_PATH, 
+                    paste0(
+                        "corine_hexagons_distance-to-", 
+                        paste(tolower(str_split(variable, "\\.")[[1]][-(1:2)]), collapse = "-"),
+                        ".pdf")))  
+        }
+    }
     
     # 2. chelsa datasets
     for (i in 1:length(CHELSA_DATASETS)) {

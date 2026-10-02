@@ -520,6 +520,93 @@ make_umap_and_plots <- function(
     return(list(umap = umap_res, plot_ind = p_ind, embedding_full = emb))
 }
 
+# A function that that transforms a dataframe with EXPLORE_COLUMNS and k_folds
+# columns into a dataframe of 3 columns : k_folds x names(EXPLORE_COLUMNS) x
+# values in EXPLORE_COLUMNS. It enables the comparison of variables across
+# k_folds between dataframes.
+# ARGS:
+#   - df: a data.frame containing EXPLORE_COLUMNS and group_col.
+#   - group_label: a string. When given, overwrite (or rather, creates) content
+#       in column "k_folds" with this label.
+#   - group_col: a string. The name of k_folds column, that are into their 
+#       own column in the outputed dataframe
+# RETURNS:
+#   - a data.frame.
+to_long <- function(df, group_label = NULL, group_col = "k_folds") {
+    out <- df |>
+        select(any_of(group_col), all_of(EXPLORE_COLUMNS)) |>
+        pivot_longer(
+            cols = all_of(EXPLORE_COLUMNS),
+            names_to = "variable",
+            values_to = "value"
+        ) |>
+        mutate(variable = factor(variable, levels = EXPLORE_COLUMNS))
+
+    if (!is.null(group_label)) out[[group_col]] <- group_label
+    out[[group_col]] <- as.character(out[[group_col]])
+    out
+}
+
+# A function that shows the distributions of the values within columns of 
+# a data.frame across k_folds: one subplot per column, one distribution per k.
+# ARGS:
+#   - df: a data.frame 
+#       (must contain "k_folds" column).
+#   - left_ref: a data.frame 
+#       (must contain "k_folds" column and the columns in df).
+#   - ref_right: a data.frame 
+#       (must contain "k_folds" column and the columns in df).
+#   - left_label: a string. The label for the reference plot on the left side.
+#   - right_label: a string. The label for the reference plot on the right side.
+# RETURNS:
+#   - a ggplot object
+plot_with_references <- function(
+        df, ref_left, ref_right,
+        left_label = "reference",
+        right_label = "reference_bis") {
+    folds_long <- to_long(df)
+    fold_levels <- as.character(sort(unique(as.numeric(folds_long$k_folds))))
+
+    all_levels <- c(left_label, fold_levels, right_label)
+
+    # Get data 
+    # (a dummy "k_folds" column is added to each ref df, containing their label)
+    plot_all <- bind_rows(
+            to_long(ref_left, left_label),
+            folds_long,
+            to_long(ref_right, right_label)
+        ) |>
+        mutate(k_folds = factor(k_folds, levels = all_levels))
+
+    # Colors: gray shades for references, default palette for folds
+    fill_values <- c(
+        setNames("gray60", left_label),
+        setNames(scales::hue_pal()(length(fold_levels)), fold_levels),
+        setNames("gray30", right_label)
+    )
+
+    # Separator positions: 
+    #   - one between left_ref and first fold
+    #   - one between last fold and right_ref
+    sep_left  <- 1.5
+    sep_right <- length(all_levels) - 0.5
+
+    # Build plot and return it
+    ggplot(plot_all, aes(x = k_folds, y = value, fill = k_folds)) +
+        geom_violin(alpha = 0.4, adjust = .5) +
+        geom_boxplot(width = 0.15, outlier.size = 0) +
+        geom_vline(xintercept = c(sep_left, sep_right),
+                colour = "gray40", linetype = "dashed") +
+        scale_fill_manual(values = fill_values) +
+        facet_wrap(~ variable, scales = "free_y", ncol = 3) +
+        labs(x = NULL, y = NULL) +
+        theme_bw() +
+        theme(
+            legend.position = "none",
+            axis.text.x = element_text(angle = 45, hjust = 1)
+        )
+}
+
 ##### Ecology functions ##### -------------------------------------------------
 # A function that computes occurence rank curves from a dataframe of presence
 # absence data.

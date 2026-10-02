@@ -96,14 +96,22 @@ simulate_from_PCA <- function(
     # Check parameters
     
     set.seed(seed)
-    k_simulations <- list(sp_params = list(), sp_observations = list())
+    k_simulations <- list(
+        sp_params = list(), 
+        sp_suitability = list(),
+        sp_probability = list(),
+        sp_pa_params = list(),
+        sp_observations = list())
     status_msg <- cli_status(
         "[k-fold {1}/{k_folds}]: Generating species {1} of {n_sp}...")
 
     for (k in 1:k_folds) {
         k_sp_params <- list()
+        k_sp_suit <- list()
+        k_sp_prob <- list()
+        k_sp_conv <- list()
         k_sp_obs <- list()
-
+        
         for (sp_i in 1:n_sp) {
             cli_status_update(
                 status_msg, 
@@ -127,15 +135,21 @@ simulate_from_PCA <- function(
 
             # Determine presence-absence based on target species prevalence
             # (virtualspecies auto solves alpha and beta to match prevalence)
-            k_sp_obs[[paste0("sp_", sp_i)]] <- suppressMessages(convertToPA(
+            results_PA <- suppressMessages(convertToPA(
                 suitability,
                 PA.method = "probability",
                 prob.method = "logistic",
                 species.prevalence = prevalences[sp_i], 
-                plot = FALSE))$pa.raster
-            
+                plot = FALSE))
+            k_sp_suit[[paste0("sp_", sp_i)]] <- results_PA$suitab.raster
+            k_sp_prob[[paste0("sp_", sp_i)]] <- results_PA$probability.of.occurrence
+            k_sp_conv[[paste0("sp_", sp_i)]] <- results_PA$PA.conversion
+            k_sp_obs[[paste0("sp_", sp_i)]] <- results_PA$pa.raster
         }
         k_simulations$sp_params[[k]] <- k_sp_params
+        k_simulations$sp_suitability[[k]] <- k_sp_suit
+        k_simulations$sp_probability[[k]] <- k_sp_prob
+        k_simulations$sp_pa_params[[k]] <- k_sp_conv
         k_simulations$sp_observations[[k]] <- k_sp_obs
     }
 
