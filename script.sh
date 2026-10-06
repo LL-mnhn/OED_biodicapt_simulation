@@ -30,7 +30,7 @@ rm -rf outputs/results/*
 Rscript -e 'source(".Rprofile"); source("scripts/4-OED_sampling_strategies.R")'
 
 ## Run script (STEP 5)
-rm -rf outputs/results_analysis/*
+rm -rf outputs/results_analyses/*
 Rscript -e 'source(".Rprofile"); source("scripts/5-result_analysis.R")'
 
 

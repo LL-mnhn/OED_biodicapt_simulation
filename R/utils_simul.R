@@ -92,7 +92,7 @@ customSampleOccurrences <- function(vsp_map, df, detection.probability) {
 #   - k_sp_obs: 
 simulate_from_PCA <- function(
         raster_stack, precomputed_pca, n_sp, prevalences, 
-        k_folds = K_FOLDS, seed = 42) {
+        k_folds = K_FOLDS, max_draws = 30, min_suit = 0.25, seed = 42) {
     # Check parameters
     
     set.seed(seed)
@@ -117,15 +117,50 @@ simulate_from_PCA <- function(
                 status_msg, 
                 "[k-fold {k}/{k_folds}]: Generating species {sp_i} of {n_sp}...")
 
-            # Pick random coordinates in PCA to generate sp suitability
-            suitability <- suppressMessages(generateSpFromPCA(
-                raster.stack = raster_stack,
-                pca = precomputed_pca,
-                niche.breadth = "narrow",
-                sample.points = TRUE,
-                nb.points = 25000, # default is 10000
-                plot = FALSE
-            ))
+            # With a set of given prevalences, suitability has to reach
+            # a minimum level, or it will just be a random draw of presence-
+            # absence in each cell, and the map will just be noise.
+            draw_suitability <- TRUE
+            draw <- 0
+            while (draw_suitability && (draw < max_draws)) {
+                draw_suitability <- FALSE
+                draw <- draw + 1
+                cli_status_update(
+                    status_msg, 
+                    "[k-fold {k}/{k_folds}]: Generating species {sp_i} of {n_sp} (draw: {draw}/{max_draws})...")
+
+                # Pick random coordinates in PCA to generate sp suitability
+                suitability <- suppressMessages(generateSpFromPCA(
+                    raster.stack = raster_stack,
+                    pca = precomputed_pca,
+                    niche.breadth = "any",
+                    sample.points = TRUE,
+                    nb.points = 25000, # default is 10000
+                    plot = FALSE
+                ))
+
+                s <- as.vector(values(suitability$suitab.raster))
+                s <- s[!is.na(s)]
+
+                # If suitability of the marginal cell (the least suitable cell
+                # that can still qualify as "presence" data under the chosen 
+                # target prevalence) is inferior to threshold, reject draw
+                if (quantile(s, 1 - prevalences[sp_i]) < min_suit) {
+                    draw_suitability <- TRUE
+                }
+
+                # If the proportion of cells with high suitability (> 50%) is
+                # clearly larger than the target prevalence needs, then the 
+                # distribution risks being very sparse, reject draw.
+                frac_high <- mean(s > 0.5)
+                if (frac_high > 3 * prevalences[sp_i]) {    
+                    draw_suitability <- TRUE
+                }
+            }
+            if (draw >= max_draws) {
+                cli_alert_warning("[k-fold {k}/{k_folds}]: Exceeded max number of draws for {sp_i} of {n_sp}...")
+            }
+
 
             # Store the coordinates that were picked for the ellipsoid
             k_sp_params[[paste0("sp_", sp_i)]] <- list(
@@ -139,6 +174,7 @@ simulate_from_PCA <- function(
                 suitability,
                 PA.method = "probability",
                 prob.method = "logistic",
+                alpha = -0.05,
                 species.prevalence = prevalences[sp_i], 
                 plot = FALSE))
             k_sp_suit[[paste0("sp_", sp_i)]] <- results_PA$suitab.raster

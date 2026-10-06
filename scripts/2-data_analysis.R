@@ -158,6 +158,12 @@ envs_raster <- get_master_raster(
     mode = "raw", 
     rm.lyr = REMOVE_LAYERS_FROM_MASTER, 
     rm.cor.lyr = CORRELATED_LAYERS_IN_MASTER)
+for (lyr in setdiff(names(envs_raster), X_VARIABLES)) {
+    envs_raster <- subset(
+        envs_raster, 
+        names(envs_raster)[names(envs_raster) != lyr])
+}
+
 # Save all layers to a figure
 plots <- lapply(names(envs_raster), function(n) {
     p <- ggplot() + 

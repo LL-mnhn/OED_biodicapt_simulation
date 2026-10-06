@@ -13,6 +13,7 @@ library(purrr)
 library(ggplot2)
 library(ggExtra)
 library(tidyterra)
+library(patchwork)
 library(virtualspecies)
 
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))))
@@ -28,7 +29,7 @@ REMOVE_LAYERS_FROM_MASTER <- c("CLC", "distance to NODATA")
 CORRELATED_LAYERS_IN_MASTER <- list(  # keep first name for each vector in list
     c("CHELSA_tas", "Elevation")
 ) 
-SHOW_SP <- 3 # picks this number of species in simulations to show their maps
+SHOW_SP <- 5 # picks this number of species in simulations to show their maps
 
 
 if (authorise_overwrite(SIMULATE_PATH)) {
@@ -72,8 +73,6 @@ plot_virtualspecies_rasters <- function() {
 }
 
 
-
-
 ##### Load datasets ##### -----------------------------------------------------
 cli_alert_info("Loading datasets...")
 # environmental data for virtual species (downsampled version)
@@ -81,6 +80,12 @@ envs_raster_subres <- get_master_raster(
     mode = "res",
     rm.lyr = REMOVE_LAYERS_FROM_MASTER, 
     rm.cor.lyr = CORRELATED_LAYERS_IN_MASTER)
+for (lyr in setdiff(names(envs_raster_subres), X_VARIABLES)) {
+    envs_raster_subres <- subset(
+        envs_raster_subres, 
+        names(envs_raster_subres)[names(envs_raster_subres) != lyr])
+}
+
 
 # species + environmental dataset (a sort of biased "ground truth")
 stoc_df <- fix_names(vect(STOC_OBS_FULL))
