@@ -347,3 +347,5 @@ standardised_ggplot_save(
     .width = 36, 
     .height = 12
 )
+
+cli_alert_success("Analysis of HMSC is ready!\n\n")
