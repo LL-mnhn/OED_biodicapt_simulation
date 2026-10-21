@@ -74,6 +74,20 @@ check_corine_raster <- function() {
     cli_alert_success("Raw CLC files are available.\n\n")
 }
 
+check_SWF_raster <- function() {
+    cli_alert_info("Checking Small Woody Features File...")
+
+    # Check if file exists
+    if (!file.exists(SWF_FILEPATH)) {
+        cli_alert_danger(
+            paste0("File '", SWF_FILEPATH, "' was not found!\n"))
+        cli_alert_warning("If needed, download file from https://land.copernicus.eu/en/products/high-resolution-layer-small-landscape-features/small-woody-features-2018#download")
+        stop("Tip: did you create the necessary folders for the files?")
+    }
+
+    cli_alert_success("Raw SWF file is available.\n\n")
+}
+
 check_chelsa_rasters <- function() {
     cli_alert_info("Checking CHELSA files...")
 
@@ -109,17 +123,18 @@ check_chelsa_rasters <- function() {
                 "_", OBS_YEAR, ".tif")
             filepath <- file.path(CHELSA_FOLDER, chelsa_dataset, filename)
             if (!file.exists(filepath)) {
-                cli_alert_info(paste0(
-                    "Missing CHELSA file, auto-download of file ", 
-                    filename, "..."))
-                date <- as.Date(paste0(OBS_YEAR, "-", sprintf('%02d', month), "-01"))
-                chelsa_raster <- getChelsa(
-                    chelsa_dataset, 
-                    extent = c(LON_MIN, LON_MAX, LAT_MIN, LAT_MAX), 
-                    startdate = date, enddate = date,
-                    dataset = "chelsa-monthly")
+                stop("Missing CHELSA-monthly file, download them at https://www.chelsa-climate.org/.")
+                # cli_alert_info(paste0(
+                #     "Missing CHELSA file, auto-download of file ", 
+                #     filename, "..."))
+                # date <- as.Date(paste0(OBS_YEAR, "-", sprintf('%02d', month), "-01"))
+                # chelsa_raster <- getChelsa(
+                #     chelsa_dataset, 
+                #     extent = c(LON_MIN, LON_MAX, LAT_MIN, LAT_MAX), 
+                #     startdate = date, enddate = date,
+                #     dataset = "chelsa-monthly")
 
-                writeRaster(chelsa_raster, filepath)
+                # writeRaster(chelsa_raster, filepath)
             }
         }
     }
@@ -175,7 +190,7 @@ check_elevation_raster <- function(){
         raster_elevation <- rast(get_elev_raster(
             locations = extent_df,
             z = ELEVATION_ZOOM_LEVEL,       
-            prj = "EPSG:4326",
+            prj = PROJECT_CRS,
             clip = "bbox"))
         writeRaster(raster_elevation, ELEVATION_FILEPATH)
     }
@@ -233,19 +248,22 @@ if (length(list.files(RAW_DATA_PATH)) == 0) {
     # 3. CORINE Land Cover dataset
     . <- check_corine_raster()
 
-    # 4. CHELSA datasets
+    # 4. Small Woody Features dataset
+    . <- check_SWF_raster()
+
+    # 5. CHELSA datasets
     . <- check_chelsa_rasters()
 
-    # 5. NDVI dataset
+    # 6. NDVI dataset
     . <- check_appears_rasters()
 
-    # 6. Elevation dataset
+    # 7. Elevation dataset
     . <- check_elevation_raster()
 
-    # 7. Light pollution dataset
+    # 8. Light pollution dataset
     . <- check_light_pollution_raster()
 
-    # 8. Species absence-presence dataset
+    # 9. Species absence-presence dataset
     . <- check_species_data()
 }
 

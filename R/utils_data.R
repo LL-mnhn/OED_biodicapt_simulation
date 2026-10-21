@@ -123,6 +123,40 @@ split_evenly <- function(number, divisions) {
 
 
 ##### Datasets ##### ----------------------------------------------------------
+# A function that returns the project extent (in PROJECT_CRS units) as a polygon
+# expressed in any CRS. Used to crop rasters that are stored in another CRS.
+# ARGS:
+#   - crs_out: the CRS of the returned polygon (default: PROJECT_CRS).
+#   - xmin, xmax, ymin, ymax: extent, in PROJECT_CRS units (meters).
+# RETURNS:
+#   - a SpatVector (polygon).
+get_extent_polygon <- function(
+        crs_out = PROJECT_CRS,
+        xmin = LON_MIN, xmax = LON_MAX, 
+        ymin = LAT_MIN, ymax = LAT_MAX) {
+    as.polygons(ext(xmin, xmax, ymin, ymax), crs = PROJECT_CRS) |>
+        densify(interval = 10000) |>   # 10 km (PROJECT_CRS is in meters)
+        project(crs_out)
+}
+
+# A helper that makes sure a categorical raster is in PROJECT_CRS and written 
+# on disk as integers (CORINE codes are small ints). If the raster is already in
+# PROJECT_CRS it is only written to disk (no resampling, so no distortion).
+# ARGS:
+#   - raster: a SpatRaster (single categorical layer).
+#   - tmp_dir: a temporary directory to save the intermediary raster.
+# RETURNS:
+#   - a SpatRaster (file-backed) in PROJECT_CRS.
+to_project_crs_on_disk <- function(raster, tmp_dir = tempdir()) {
+    filename <- file.path(tmp_dir, "r_proj.tif")
+    if (same.crs(raster, PROJECT_CRS)) {
+        writeRaster(raster, filename, datatype = "INT2U", overwrite = TRUE)
+    } else {
+        project(raster, PROJECT_CRS, method = "near",
+                filename = filename, datatype = "INT2U", overwrite = TRUE)
+    }
+}
+
 # A function that "blurs" coordinate within a dataframe by randomly shifting
 #   each longitude and latitude coordinates.
 # ARGS:
@@ -138,14 +172,28 @@ split_evenly <- function(number, divisions) {
 #   - orginal df with shifted coordinates.
 blur_coordinates <- function(
         df, 
-        x_lon, y_lat, 
-        blur_km, seed = NULL, 
+        x_lon, y_lat, blur_km, 
+        seed = NULL, 
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
     # for reproducible results  
     if (!is.null(seed)){
         set.seed(seed) 
     }
+
+    # Check that the dataframe is in EPSG:4326 coordinates (approx.)
+    if (!(all(FRANCE_BBOX_4326["xmin"] <= as.data.frame(df[x_lon])) &
+        all(as.data.frame(df[x_lon]) <= FRANCE_BBOX_4326["xmax"])   &
+        all(FRANCE_BBOX_4326["ymin"] <= as.data.frame(df[y_lat]))   &
+        all(as.data.frame(df[y_lat]) <= FRANCE_BBOX_4326["ymax"])    
+    )) {
+        stop(paste0(
+            "save_features_from_obs() assumes that your data is in",
+            "EPSG:4326 over France's extent. It looks like 'df' is in ",
+            "another CRS, or on a different area. Please check your data."
+        ))
+    }
+
 
     # if sf object, remove geometry field (we're gonna make a new one)
     is_sf <- inherits(df, "sf")
@@ -158,29 +206,25 @@ blur_coordinates <- function(
         crs_orig <- terra::crs(df)
         df <- as.data.frame(df)   # attributes only, geometry dropped
     }
-  
-    # Manual check of coordinate system (CRS 4326)
-    if (    !between(min(df[[x_lon]]), lon_min, lon_max) ||
-            !between(max(df[[x_lon]]), lon_min, lon_max) ||
-            !between(min(df[[y_lat]]), lat_min, lat_max) ||
-            !between(max(df[[y_lat]]), lat_min, lat_max)) {
-        cli_alert_danger("Dataset failed basic extent test")
-        stop(paste0(
-            "Wrong coordinate system and/or borders are outside", 
-            " France's metropolitan area."))
-    }
 
-    # get mean latitude and longitude resolutions
-    lat_mean  <- (lat_min + lat_max) / 2
-    res_lat   <- blur_km / 111.0
-    res_lon   <- blur_km / (111.0 * cos(lat_mean * pi / 180))
+    # Move to a metric CRS: the blur is then exactly in meters, whatever the latitude
+    xy_m <- data.frame(x = df[[x_lon]], y = df[[y_lat]]) |>
+        st_as_sf(coords = c("x", "y"), crs = 4326) |>
+        st_transform(PROJECT_CRS) |>
+        st_coordinates()
 
-    # Dividing by 1.96 so ~95% of points stay within a circle of blur_km 
-    df <- df |>
-        mutate(
-            "{x_lon}" := .data[[x_lon]] + rnorm(dplyr::n(), mean = 0, sd = res_lon / 1.96),
-            "{y_lat}" := .data[[y_lat]] + rnorm(dplyr::n(), mean = 0, sd = res_lat / 1.96)
-        )
+    # Dividing by 2.45 so ~95% of points stay within a circle of blur_km
+    # FYI this is the value for 2D, in 1D it is the usual 1.96
+    sd_m <- blur_km * 1000 / 2.45
+    xy_m <- xy_m + matrix(rnorm(2 * nrow(xy_m), mean = 0, sd = sd_m), ncol = 2)
+
+    # Back to lon/lat
+    xy_deg <- data.frame(x = xy_m[, 1], y = xy_m[, 2]) |>
+        st_as_sf(coords = c("x", "y"), crs = PROJECT_CRS) |>
+        st_transform(4326) |>
+        st_coordinates()
+    df[[x_lon]] <- xy_deg[, 1]
+    df[[y_lat]] <- xy_deg[, 2]
     
     # make a new "geometry" column
     if (is_sf) {
@@ -221,23 +265,17 @@ monthly_2_yearly_rasters <- function(
     }
 
     # Stack rasters together
-    raster_list <- c()
     for (n_path in 1:12){
         # import raster
         raster <- rast(raster_paths[n_path])
-        
-        if (!same.crs(raster, "EPSG:4326")){
-            stop(paste0("Raster (at ", raster_paths[n_path], ") has crs ", 
-                crs(raster), ". Expected 'EPSG:4326'."))
-        }
-        
-        cropped_raster <- clip_raster_france_wgs84_crs(
+               
+        cropped_raster <- clip_raster_france(
             raster, verbose = verbose, buffer = buffer)     
 
         if (n_path == 1){
             rasters_together <- cropped_raster
         } else {
-            raster_list <- c(rasters_together, cropped_raster)
+            rasters_together <- c(rasters_together, cropped_raster)
         }
     }
     
@@ -259,7 +297,7 @@ average_monthly_quantitative_rasters <- function(
         folder_path,
         save_to,
         res_km = RES_KM) {
-    cli_alert_info("Aggregation of monthly data.")
+    cli_alert_info("Aggregation of monthly data...")
     
     if (!authorise_overwrite(save_to)) {
         # Check if file exists
@@ -280,7 +318,7 @@ average_monthly_quantitative_rasters <- function(
             fun = mean)
         
         cli_alert_info("Saving file...")
-        writeRaster(annual_raster,  save_to, overwrite = TRUE)
+        writeRaster(annual_raster, save_to, overwrite = TRUE)
         cli_alert_success(paste0(
             "Created '", save_to, "' file!\n\n"))
     }
@@ -304,6 +342,8 @@ average_monthly_quantitative_rasters <- function(
 # RETURNS:
 #   - a sf object, the dataframe with its added features (= columns)
 save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
+    x_lon <- "LON"
+    y_lat <- "LAT"
     if (!authorise_overwrite(save_to)) {
         # Check if file exists
         cli_alert_warning(paste0("Skipping the addition of features to ", 
@@ -317,10 +357,23 @@ save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
             df <- file
         }
 
+        # Check that the dataframe is in EPSG:4326 coordinates (approx.)
+        if (!(all(FRANCE_BBOX_4326["xmin"] <= as.data.frame(df[x_lon])) &
+            all(as.data.frame(df[x_lon]) <= FRANCE_BBOX_4326["xmax"])   &
+            all(FRANCE_BBOX_4326["ymin"] <= as.data.frame(df[y_lat]))   &
+            all(as.data.frame(df[y_lat]) <= FRANCE_BBOX_4326["ymax"])    
+        )) {
+            stop(paste0(
+                "save_features_from_obs() assumes that your data is in",
+                "EPSG:4326 over France's extent. It looks like 'df' is in ",
+                "another CRS, or on a different area. Please check your data."
+            ))
+        }
+
         # convert dataframe to geo dataframe
         cli_alert_info(paste0("Conversion to shapefile..."))
         points <- vect(st_as_sf(
-            df, coords = c("LON", "LAT"), crs = 4326, remove = FALSE))
+            df, coords = c(x_lon, y_lat), crs = 4326, remove = FALSE))
 
         # the user can choose which type of file the features must be extracted
         # from. If raw, uses the initial raw resolution of the files (which are
@@ -330,25 +383,25 @@ save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
         if (mode == "raw") {
             environmental_data_paths <- c(
                 CORINE_PATH_PREPROCESSED, CHELSA_ANNUAL_PATHS, NDVI_ANNUAL_PATH,
-                ELEVATION_PATH_PREPROCESSED, LIGHT_POLLUTION_FILEPATH)
+                ELEVATION_PATH_PREPROCESSED, LIGHT_POLLUTION_FILEPATH, SWF_PATH_PREPROCESSED)
             
         } else if (mode == "raster") {
             environmental_data_paths <- c(
                 CORINE_PROJECTION_BASEPATH, CHELSA_PROJECTION_BASEPATHS, 
                 NDVI_PROJECTION_BASEPATH, ELEVATION_PROJECTION_BASEPATH, 
-                LIGHT_POLLUTION_PROJECTION_BASEPATH)  
+                LIGHT_POLLUTION_PROJECTION_BASEPATH, SWF_PROJECTION_BASEPATH)  
             environmental_data_paths <- paste0(
                 environmental_data_paths, 
-                "_projection_france_res10km-WGS84.tif")
+                "_projection_france_res10km-", PROJECT_CRS_TAG, ".tif")
             
         } else if (mode == "hexagonal") {
             environmental_data_paths <- c(
                 CORINE_PROJECTION_BASEPATH, CHELSA_PROJECTION_BASEPATHS, 
                 NDVI_PROJECTION_BASEPATH, ELEVATION_PROJECTION_BASEPATH, 
-                LIGHT_POLLUTION_PROJECTION_BASEPATH)  
+                LIGHT_POLLUTION_PROJECTION_BASEPATH, SWF_PROJECTION_BASEPATH)  
             environmental_data_paths <- paste0(
                 environmental_data_paths, 
-                "_projection_france_hexagons_res10km-WGS84.gpkg")
+                "_projection_france_hexagons_res10km-", PROJECT_CRS_TAG, ".gpkg")
             
         } else {
             stop("mode should be one of 'raw', 'raster' or 'hexagonal'.")
@@ -357,7 +410,7 @@ save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
         # new names are needed when adding columns to 'points' (geo dataframe) 
         environmental_data_names <- c(
             "clc", paste0("chelsa_", CHELSA_DATASETS), "ndvi", "elevation",
-            "light_pollution")   
+            "light_pollution", "swf")   
         
         cli_bullets(c(
             "!" = "[Fetching features]: Using hard coded paths:",
@@ -366,41 +419,50 @@ save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
 
         for (i in 1:length(environmental_data_paths)) {
             
+            # Step 1: extract the values of each layer at each point, as a 
+            # dataframe with one row per point and one column per layer
             if (mode %in% c("raw", "raster")) {
                 # load envrionmental data
                 env_data <- rast(environmental_data_paths[i])
+                layer_ids <- names(env_data)
+                
+                # `points` stay in EPSG:4326; use a copy in the raster's CRS for extraction
+                pts_i <- project(points, crs(env_data))
 
                 # drop the leading ID column, keep one column per layer
                 extracted_values <- terra::extract(
-                    env_data, points)[, -1, drop = FALSE]
-                
-                # Extract layer names
-                n_layers <- ncol(extracted_values)
-                if (n_layers == 1) {
-                    col_names <- environmental_data_names[i]
-                } else {
-                    # if many layers, take the name of the layers in the raster
-                    layer_ids <- names(env_data)
-                    col_names <- layer_ids
-                }
-                colnames(extracted_values) <- col_names
-
-                for (col in col_names) {
-                    points[[col]] <- extracted_values[[col]]
-                }
+                    env_data, pts_i)[, -1, drop = FALSE]
 
             } else if (mode == "hexagonal") {
+                # hexagons have one attribute per layer of the raster they 
+                # were made from (see project_to_hexagons)
                 env_data <- vect(environmental_data_paths[i])
 
                 # extract values of points projected onto env_data cells
                 extracted_values <- terra::extract(
-                    env_data, points)[, "dominant_class"]
+                    env_data, project(points, crs(env_data)))
 
-                if (length(extracted_values) != nrow(points)) {
+                if (nrow(extracted_values) != nrow(points)) {
                     stop("Overlaping shapes in .gpkg file.")
                 }
+                # drop the leading ID column, keep one column per layer
+                extracted_values <- extracted_values[, -1, drop = FALSE]
+                layer_ids <- colnames(extracted_values)
             }
-            points[[environmental_data_names[i]]] <- extracted_values
+
+            # Step 2 (same for all modes): add one column to `points` per layer.
+            # A single layer is named after environmental_data_names, many 
+            # layers keep their own names.
+            if (ncol(extracted_values) == 1) {
+                col_names <- environmental_data_names[i]
+            } else {
+                col_names <- layer_ids
+            }
+            colnames(extracted_values) <- col_names
+
+            for (col in col_names) {
+                points[[col]] <- extracted_values[[col]]
+            }
         }
 
         if (blur) {
@@ -410,12 +472,20 @@ save_features_from_obs <- function(file, save_to, mode = "raw", blur = TRUE) {
             anonym_df <- blur_coordinates(
                 points, "LON", "LAT", BLUR_SIZE, BLUR_SEED)
         } else {
-            anonym_df <- points
+            # Rebuild geometry explicitly from the LON/LAT columns
+            coords_df <- as.data.frame(points)
+
+            anonym_df <- vect(
+                coords_df,
+                geom = c("LON", "LAT"),
+                crs = "EPSG:4326",
+                keepgeom = TRUE
+            )
         }
 
-        # Save resulting dataframe
+        # Save resulting dataframe (reproject in target CRS)
         cli_alert_info("Saving file...")
-        writeVector(anonym_df, save_to, overwrite = TRUE)
+        writeVector(project(anonym_df, PROJECT_CRS), save_to, overwrite = TRUE)
         cli_alert_success("Saved anonymized dataset with features!")
 
         return(anonym_df)
@@ -460,26 +530,26 @@ create_master_files_features <- function(
             if (mode == "raw") {
                 environmental_data_paths <- c(
                     CORINE_PATH_PREPROCESSED, CHELSA_ANNUAL_PATHS, NDVI_ANNUAL_PATH,
-                    ELEVATION_PATH_PREPROCESSED, LIGHT_POLLUTION_FILEPATH)
+                    ELEVATION_PATH_PREPROCESSED, LIGHT_POLLUTION_FILEPATH, SWF_PATH_PREPROCESSED)
                 
             } else { # mode == "raster"
                 environmental_data_paths <- c(
                     CORINE_PROJECTION_BASEPATH, CHELSA_PROJECTION_BASEPATHS, 
                     NDVI_PROJECTION_BASEPATH, ELEVATION_PROJECTION_BASEPATH, 
-                    LIGHT_POLLUTION_PROJECTION_BASEPATH)  
+                    LIGHT_POLLUTION_PROJECTION_BASEPATH, SWF_PROJECTION_BASEPATH)  
                 environmental_data_paths <- paste0(
                     environmental_data_paths, 
-                    "_projection_france_res", RES_KM, "km-WGS84.tif")
+                    "_projection_france_res", RES_KM, "km-", PROJECT_CRS_TAG, ".tif")
             }
         } else if (mode == "hexagonal") {
             # Shapefiles must be handled differently than rasters
             environmental_data_paths <- c(
                 CORINE_PROJECTION_BASEPATH, CHELSA_PROJECTION_BASEPATHS, 
                 NDVI_PROJECTION_BASEPATH, ELEVATION_PROJECTION_BASEPATH, 
-                LIGHT_POLLUTION_PROJECTION_BASEPATH)  
+                LIGHT_POLLUTION_PROJECTION_BASEPATH, SWF_PROJECTION_BASEPATH)  
             environmental_data_paths <- paste0(
                 environmental_data_paths, 
-                "_projection_france_hexagons_res", RES_KM, "km-WGS84.gpkg")
+                "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG, ".gpkg")
         } else {
             stop("mode should be one of 'raw', 'raster' or 'hexagonal'.")
         }
@@ -490,31 +560,34 @@ create_master_files_features <- function(
         ))
 
         # Merge them together
-        if (mode == "raw" | mode == "raster") {
-            # Rasters can be handled the same way (not depending on the mode)
-            # define target grid 
+        if (mode == "raw" | mode == "raster") {            
             target_ext <- ext(lon_min, lon_max, lat_min, lat_max)
+
+            # Resolutions in meters (degrees converted via the N-S length of a degree)
             resolutions <- sapply(environmental_data_paths, function(p) {
                 r <- rast(p)
-                res(r)[1]
+                if (is.lonlat(r)) res(r)[2] * 111320 else res(r)[1]
             })
-            
-            # get coarsest resolution (aka the most pixelated)
-            target_res_deg <- max(resolutions)  
-            template <- rast(
-                target_ext, 
-                resolution = target_res_deg,
-                crs = crs(rast(environmental_data_paths[1]))) 
+            target_res <- ceiling(max(resolutions) / 100) * 100   # round up to next 100 m
+            template <- rast(target_ext, resolution = target_res, crs = PROJECT_CRS)
             cli_alert_info(paste0(
                 "Selecting raster with coarsest resolution (res: ", 
-                round(target_res_deg, 2), "°)."))
-            
+                round(target_res, 2), " m)."))
+           
+    
             # Crop and resample each raster onto the template
             cli_alert_info("Resampling rasters, can take several minutes...")
             raster_list <- list()
             for (path in environmental_data_paths) {
                 env_raster <- rast(path)
-                raster_cropped <- crop(env_raster, target_ext)
+
+                # cheap pre-crop
+                if (!same.crs(env_raster, PROJECT_CRS)) {
+                    ext_native <- project(target_ext, from = PROJECT_CRS, to = crs(env_raster))
+                    env_raster <- crop(env_raster, ext_native * 1.15)  # small buffer
+                } else {
+                    env_raster <- crop(env_raster, target_ext)
+                }
 
                 # categorical vs continuous resampling method
                 if (grepl("CLC", path, ignore.case = TRUE)) {
@@ -523,8 +596,10 @@ create_master_files_features <- function(
                     method <- "bilinear"
                 }
 
-                raster_resampled <- resample(
-                    raster_cropped, template, method = method)
+                # takes care of the projection as well
+                raster_resampled <- terra::project(
+                    env_raster, template, method = method)
+
                 if (grepl("CHELSA", path, ignore.case = TRUE)) {
                     name <- paste(
                         str_split(basename(path), "_")[[1]][c(1,3)], 
@@ -537,6 +612,8 @@ create_master_files_features <- function(
                     name <- "Elevation"
                 } else if (grepl("ndvi", path, ignore.case = TRUE)) {
                     name <- "ndvi"
+                } else if (grepl("SWF", path, ignore.case = TRUE)) {
+                    name <- "swf"
                 } else {
                     stop(paste0("I'm a dummy, I did not expect new names, ",
                     "I gotta modify this function..."))
@@ -572,8 +649,8 @@ create_master_files_features <- function(
 
             # Stack into one raster
             names(raster_list) <- NULL # reset names to avoid auto-renaming
-            master_raster <- rast(raster_list)
-            
+            master_raster <- fix_names(rast(raster_list))
+
             # Save
             cli_alert_success("Saving raster...")
             writeRaster(master_raster, save_to, overwrite = TRUE)
@@ -592,33 +669,38 @@ create_master_files_features <- function(
             hex_list <- Map(
                 function(h, path) {
                     df <- as.data.frame(h)
-                    df <- df %>% select(contains(join_col), contains(keep_col))
 
-                    if (grepl("CHELSA", path, ignore.case = TRUE)) {
-                        prefix <- paste(
-                            str_split(basename(path), "_")[[1]][c(1,3)], 
-                            collapse = "_")
-                    } else if (grepl("CLC", path, ignore.case = TRUE)) {
-                        prefix <- "CLC"
-                    } else if (grepl("light", path, ignore.case = TRUE)) {
-                        prefix <- "light_pollution"
-                    } else if (grepl("Elevation", path, ignore.case = TRUE)) {
-                        prefix <- "Elevation"
-                    } else if (grepl("ndvi", path, ignore.case = TRUE)) {
-                        prefix <- "ndvi"
+                    if (grepl("CLC", path, ignore.case = TRUE)) {
+                        # Categorical layer: keep every attribute, no prefix
+                        df <- df[, c(join_col, setdiff(names(df), join_col)), drop = FALSE]
+
                     } else {
-                        stop(paste0("I'm a dummy, I did not excpect new names, ",
-                        "you gotta modify the function..."))
+                        # Numeric layers: name the output column after the variable
+                        name <- if (grepl("CHELSA", path, ignore.case = TRUE)) {
+                            paste(str_split(basename(path), "_")[[1]][c(1, 3)], collapse = "_")
+                        } else if (grepl("light", path, ignore.case = TRUE)) "light_pollution"
+                        else if (grepl("Elevation", path, ignore.case = TRUE)) "Elevation"
+                        else if (grepl("ndvi", path, ignore.case = TRUE)) "ndvi"
+                        else stop("Unexpected layer name, modify the function.")
+
+                        # drop the id and hex_area, what remains is the value column
+                        value_cols <- setdiff(names(df), c(join_col, "hex_area"))
+                        value_cols <- value_cols[!grepl("hex_area$", value_cols)]
+
+                        if (length(value_cols) != 1) {
+                            stop(paste0(
+                                "Expected exactly one value column in ", basename(path),
+                                " but found: ", paste(value_cols, collapse = ", ")))
+                        }
+
+                        df <- df[, c(join_col, value_cols), drop = FALSE]
+                        names(df)[2] <- name
                     }
 
-                    # rename columns
-                    names(df)[names(df) == keep_col] <- paste0(prefix, "_", keep_col)
-
-                    # put renamed attributes back onto the SpatVector's geometry
                     h_renamed <- h
                     values(h_renamed) <- df
                     h_renamed
-                }, 
+                },
                 hex_list, 
                 environmental_data_paths)
             
@@ -628,17 +710,16 @@ create_master_files_features <- function(
                 stop("Hexagon layers do not share the same grid (different feature counts).")
             }
 
+            master_df <- Reduce(
+                function(a, b) merge(a, b, by = join_col),
+                lapply(hex_list, as.data.frame))
             master_hex <- hex_list[[1]]
-            for (h in hex_list[-1]) {
-                # drop geometry duplication, join by hexagon id
-                df <- as.data.frame(h)
-                master_hex <- merge(master_hex, df, by = "seqnum")
-            }
+            values(master_hex) <- master_df[match(master_hex$seqnum, master_df$seqnum), ]
 
             cli_alert_success("Saving hexagon layer...")
             writeVector(master_hex, save_to, overwrite = TRUE)
             cli_alert_success("Saved stacked hexagons!\n\n")
-            return(master_hex)
+            return(fix_names(master_hex))
 
         } else {
             stop("mode should be one of 'raw', 'raster' or 'hexagonal'.")
@@ -651,77 +732,99 @@ create_master_files_features <- function(
 # ARGS:
 #   - mode: a string, either 'raw' or 'res'. Loads either the master_raster
 #       with the best resolution available (raw) or the downsampled one (res).
-#   - rm.lyr: a vector of string, the names of the layers that must be removed.
-#   - rm.cor.lyr: a list of vector of >=2 strings. It contains names of columns
-#       that are correlated together. The function keep the first name of each
-#       vector, and removes the others.
+#   - keep.lyr: a vector of strings, the names of the layers to keep. 
+#               Default is NULL (returns all layers).
 # RETURNS:
 #   - a multi-layer SpatRaster.
-get_master_raster <- function(mode = "raw", rm.lyr = NULL, rm.cor.lyr = NULL) {
+get_master_t_rasters <- function(mode = "raw", keep.lyr = NULL) {
     # Load master raster
     if (mode == "raw") {
         cli_alert_info("Loading multi-layer raster with best resolution.")
-        master_raster <- rast(FEATURES_RAW_FULL)
+        master_raster <- rast(FEATURES_RAW_TRF)
     } else if (mode == "res") {
         cli_alert_info(paste0(
             "Loading multi-layer raster (res = ", RES_KM, "km)."))
-        master_raster <- rast(FEATURES_RES_FULL)
+        master_raster <- rast(FEATURES_RES_TRF)
     } else {
         stop("The 'mode' parameter should be one of: 'raw', 'res'.")
     }
     
+    # format names to common format
+    master_raster <- fix_names(master_raster)
+    
+    # Keep only the necessary layers
+    if (!is.null(keep.lyr)) {
+        master_raster <- master_raster[[keep.lyr]]
+    }
+    
     # reduce size for faster computation
-    master_raster <- clip_raster_france_wgs84_crs(  
+    master_raster <- clip_raster_france(  
             master_raster,  
             buffer = 5*RES_KM,   
             verbose = FALSE,
             save_to = NULL)
-    
-    # Remove useless layers
-    for (layer in rm.lyr) {
-        master_raster <- subset(
-            master_raster, 
-            names(master_raster)[names(master_raster) != layer])
-    }
-
-    # Remove correlated layers 
-    for (correlated_layers in rm.cor.lyr) {
-        for (layer in correlated_layers[2:length(correlated_layers)]) {
-            master_raster <- subset(
-                master_raster, 
-                names(master_raster)[names(master_raster) != layer])
-        }
-    }
  
-    return(fix_names(master_raster))
+    return(master_raster)
 }
 
 
 ##### Rasters/SF functions ##### ----------------------------------------------
+# A function that checks whether a SpatRaster or SpatVector has a metric CRS.
+# Inspired from terra::is.lonlat
+# ARGS:
+#   - r: a SpatRaster or SpatVector
+# RETURNS:
+#   - a boolean
+is_metric <- function(r) {
+    crs_text <- crs(r)
+    !is.lonlat(r) &&
+        grepl('UNIT\\["metre"|LENGTHUNIT\\["metre"',
+            crs_text, ignore.case = TRUE)
+}
+
+# A function that replaces NA values within a buffer around actual values in a
+# raster file.
+# ARGS:
+#   - raster_path: a filepath to a raster (.tif) file.
+#   - save_to: a filepath to save the new raster (must end with .tif).
+#   - replace_with: the replacement value for selected NAs
+#   - buffer_km: a numeric, the size of the buffer (in km) which selects NAs.
+# RETURNS:
+#   - The buffered raster
+add_buffer_to_raster <- function(
+    raster_path, save_to, replace_with = 0, buffer_km = RES_KM*5) {
+    # load raster
+    raster <- rast(raster_path)
+    if (!is_metric(raster)) {
+        stop("This function can only be used with rasters in metric CRS.")
+    }
+
+    # compute distance to closest not NA cell
+    d <- distance(raster)
+
+    # Create a buffer where NAs are replaced by "replace_with"
+    raster_with_buffer <- ifel(
+        (is.na(raster) & (d <= (buffer_km*1000))), 
+        replace_with, 
+        raster)
+    writeRaster(raster_with_buffer, save_to, overwrite = TRUE)    
+    
+    return(raster_with_buffer)
+}
+
 # A function that creates an empty raster that matches France's extent (WGS 84)
 # ARGS:
 #   - res_km: an integer/a float. 
 #       The size for each pixel of the raster (in km, approximative).
-#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - a SpatRaster with empty values to the extent of France's metropolitan
 #       area.
 get_france_raster_template <- function(
-        res_km,     
-        lon_min = LON_MIN, lon_max = LON_MAX, 
+        res_km, lon_min = LON_MIN, lon_max = LON_MAX,
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
-    # get mean latitude and longitude resolutions
-    lat_mean <- (lat_min + lat_max) / 2
-    res_lat <- res_km / 111.0
-    res_lon <- res_km / (111.0 * cos(lat_mean * pi / 180))
-    
-    # create empty raster with template grid
-    template <- rast(
-        extent = ext(lon_min, lon_max, lat_min, lat_max),
-        resolution = c(res_lon, res_lat),
-        crs = "EPSG:4326"
-    )
-    return(template)
+    rast(extent = ext(lon_min, lon_max, lat_min, lat_max),
+         resolution = res_km * 1000, crs = PROJECT_CRS)
 }
 
 # A function that imports a shapefile of france's borders
@@ -746,6 +849,7 @@ get_metropolitan_france_shapefile <- function(borders = "national") {
     }
     
     # Use hard coded extent of france to exclude overseas territories from shp
+    france_sf <- st_set_agr(france_sf, "constant")
     st_crop(
         france_sf, 
         xmin = -5.5, 
@@ -785,6 +889,9 @@ project_to_france_custom_grid <- function(raster, save_to, res_km, verbose = TRU
         cli_alert_info("Fitting new grid...\n")
     }
     france_grid_template <- get_france_raster_template(res_km)
+    # NOTE: method = "near" keeps a single source pixel per cell. When the 
+    # source is much finer than res_km, "average" (continuous layers) or 
+    # "mode" (categorical layers) would be more representative.
     raster_new_grid <- project(
         raster, france_grid_template, method = "near")
 
@@ -794,7 +901,7 @@ project_to_france_custom_grid <- function(raster, save_to, res_km, verbose = TRU
     # remove values outside of france borders
     france_sf <- get_metropolitan_france_shapefile()
     france_sf_buffered <- france_sf |>
-        st_transform(2154) |>              # EPSG:2154 = RGF93, better conservation of distances
+        st_transform(PROJECT_CRS) |>       # equal-area CRS (distances in meters)
         st_buffer(dist = 2*res_km*1000) |> # buffer distance in meters
         st_transform(crs(raster_new_grid)) # transform to match raster's crs
     raster_new_grid_clean <- clip_raster_from_shapefile(
@@ -818,12 +925,11 @@ project_to_france_custom_grid <- function(raster, save_to, res_km, verbose = TRU
 #       Is used to define a buffer around the raster (in km, approximative).
 #   - numeric_stat: a string. 
 #       If raster contains numerical values, either "mean" or "median".
-#   - lat_min, lat_max: latitudinal extent for the output (in EPSG:4326).
+#   - lat_min, lat_max: latitudinal extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - NULL, saves the shapefile silently.
 project_to_hexagons <- function(
         raster, save_to, res_km, numeric_stat, 
-        lat_min = LAT_MIN, lat_max = LAT_MAX, 
         verbose = TRUE) {
     if (!numeric_stat %in% c("mean", "median")) {
         stop(paste0("Unknown numeric_stat: '", numeric_stat, 
@@ -843,12 +949,12 @@ project_to_hexagons <- function(
         spacing = res_km, metric = TRUE, resround = 'nearest')
     france_sf <- get_metropolitan_france_shapefile()
     france_sf_buffered <- france_sf |>
-        st_transform(2154) |>              # EPSG:2154 = RGF93, better conservation of distances
+        st_transform(PROJECT_CRS) |>       # equal-area CRS (distances in meters)
         st_buffer(dist = 2*res_km*1000) |> # buffer distance in meters
-        st_transform(crs("EPSG:4326"))     # transform to match raster's crs
+        st_transform(4326)                 # dggridR works only with lon/lat
 
     # get mean latitude and longitude resolutions
-    lat_mean <- (lat_min + lat_max) / 2
+    lat_mean <- mean(FRANCE_BBOX_4326[c("ymin", "ymax")])  # degrees
     res_lat <- res_km / 111.0
     res_lon <- res_km / (111.0 * cos(lat_mean * pi / 180))
 
@@ -872,9 +978,12 @@ project_to_hexagons <- function(
         cli_alert_info(paste0("Extracting values from ", n_layers, " layer(s), this might take some time...\n"))
     }
 
+    # Polygons must be in the raster's CRS for the extraction
+    hex_for_extract <- st_transform(hex_grid, crs(raster))
+
     extracted <- exact_extract(
         raster,
-        hex_grid,
+        hex_for_extract,
         function(values, coverage_fracs) {
             # Normalize to data.frame so single- and multi-layer rasters are 
             # handled the same way
@@ -917,6 +1026,7 @@ project_to_hexagons <- function(
     if (verbose) {
         cli_alert_info("Saving files...\n")
     }
+    hex_grid <- st_transform(hex_grid, PROJECT_CRS)  # saved in PROJECT_CRS
     st_write(hex_grid, save_to, delete_dsn = TRUE, quiet = TRUE)
 
     # Export legend for each categorical layer
@@ -927,6 +1037,7 @@ project_to_hexagons <- function(
             if (is.null(category_table)) next
             legend <- category_table %>%
                 mutate(hex = rgb(Red, Green, Blue, maxColorValue = 1))
+            print(paste("LAYER NAME:", layer_names[i]))
             out_csv <- paste0(
                 file_path_sans_ext(save_to), "_", layer_names[i], ".csv")
             write_csv(legend, out_csv)
@@ -982,9 +1093,9 @@ simplify_CLC <- function(
         "31" = "Forests",
         "32" = "Shrub and/or herbaceous vegetation associations",
         "33" = "Open spaces with little or no vegetation",
-        "4" = "Wetlants",
+        "4" = "Wetlands",
         "41" = "Inland wetlands",
-        "42" = "Coastal wetlans",
+        "42" = "Coastal wetlands",
         "5" = "Water bodies",
         "51" = "Inland waters",
         "52" = "Marine waters",
@@ -1029,6 +1140,9 @@ simplify_CLC <- function(
 
     clc_raster_collapsed <- classify(clc_raster, rcl)
 
+    # Set NO_DATA (code 999) to NA
+    clc_raster_collapsed[clc_raster_collapsed == 999] <- NA
+
     # An assign new table table keyed on the new codes
     new_levels_simple <- cat_table |>
         select(NEW_CODE_18, NEW_LABEL3, NEW_Red, NEW_Green, NEW_Blue) |>
@@ -1072,24 +1186,22 @@ simplify_CLC <- function(
 # sub-layers : each sub-layer shows the distance of each cell to the closest 
 # category in the input raster layer. 
 # ARGS:
-#   - raster_layer: a SpatRaster (single layer) of categorical values.
+#   - raster: a SpatRaster (single layer) of categorical values.
 #   - temp_dir: a temporary directory to save intermediary rasters
 # RETURNS:
-#   - a SpatRaster with one layer of distances per category in raster_layer.
-factorial_to_distance2factor <- function(
-        raster_layer,
+#   - a SpatRaster with one layer of distances per category in raster
+factorial_to_distances <- function(
+        raster,
         tmp_dir = tempdir()) {
 
-    # Tell terra to be conservative with RAM and use disk
+    # Tell terra to be conservative with RAM and use of disk
     terraOptions(memfrac = 0.5, todisk = TRUE, tempdir = tmp_dir, progress = 1)
 
-    raster_clipped <- clip_raster_france_wgs84_crs(
-        raster_layer, buffer = 5*RES_KM, verbose = FALSE, save_to = NULL)
+    raster_clipped <- clip_raster_france(
+        raster, buffer = 5*RES_KM, verbose = FALSE, save_to = NULL)
 
     # Write projected raster to disk, as integers (CORINE codes are small ints)
-    r_proj <- project(raster_clipped, "EPSG:3035", method = "near",
-                      filename = file.path(tmp_dir, "r_proj.tif"),
-                      datatype = "INT2U", overwrite = TRUE)
+    r_proj <- to_project_crs_on_disk(raster_clipped, tmp_dir)
     rm(raster_clipped); gc()
 
     present <- freq(r_proj)$value
@@ -1120,7 +1232,7 @@ factorial_to_distance2factor <- function(
     names(dist_stack) <- paste0("distance to ", present)
 
     # Project back to the original grid, writing to disk
-    out <- project(dist_stack, raster_layer, method = "bilinear",
+    out <- project(dist_stack, raster, method = "bilinear",
                    filename = file.path(tmp_dir, "dist_final.tif"),
                    datatype = "FLT4S", overwrite = TRUE)
     out
@@ -1129,81 +1241,198 @@ factorial_to_distance2factor <- function(
 # A function that uses a raster layer of categorical values to generate
 # sub-layers : each sub-layer shows the proportion of cells surrounding each 
 # cell that belong to a category of the input raster layer.
+#
+# The proportion of a category within a circle is a *convolution* of the 
+# category's 0/1 indicator layer with a circular kernel (way faster than 
+# terra::focal). 
 # ARGS:
-#   - raster_layer: a SpatRaster (single layer) of categorical values.
-#   - radius_m: a numeric. The radius in meters to check frequ of categories.
-#   - temp_dir: a temporary directory to save intermediary rasters
+#   - raster: a SpatRaster (single layer) of categorical values.
+#   - radius_m: a numeric. The radius in meters count categories in.
+#   - tmp_dir: a temporary directory to save intermediary rasters
+#   - max_fft_cells: a numeric. Maximum number of cells (approximative) of the
+#       complex arrays handled at once by the FFT. Lower it if you run out of 
+#       RAM (one complex cell = 16 bytes, and ~5 such arrays are alive at once).
 # RETURNS:
 #   - a SpatRaster with one layer of proportion per category in raster_layer.
-factorial_to_proportion_radius <- function(
-        raster_layer,
+factorial_to_proportion <- function(
+        raster,
         radius_m,
-        tmp_dir = tempdir()) {
+        tmp_dir = tempdir(),
+        max_fft_cells = 8e6) {
 
-    # Be conservative with RAM and use disk
+    # Tell terra to be conservative with RAM and use of disk
     terraOptions(memfrac = 0.5, todisk = TRUE, tempdir = tmp_dir, progress = 1)
 
     # Clip with a buffer at least as large as the radius, to avoid edge effects
     # (assumes `buffer` is in km, as in your original call)
-    raster_clipped <- clip_raster_france_wgs84_crs(
-        raster_layer,
+    raster_clipped <- clip_raster_france(
+        raster,
         buffer  = 5 * RES_KM,
         verbose = FALSE, save_to = NULL)
 
     # Project to a metric CRS so the radius is in meters
-    r_proj <- project(raster_clipped, "EPSG:3035", method = "near",
-                        filename = file.path(tmp_dir, "r_proj.tif"),
-                        datatype = "INT2U", overwrite = TRUE)
+    r_proj <- to_project_crs_on_disk(raster_clipped, tmp_dir)
     rm(raster_clipped); gc()
 
-    present <- freq(r_proj)$value
-    present <- present[!is.na(present)]
-    n <- length(present)
+    # Pixels hold numeric CODES (for categorical rasters, freq() would return 
+    # LABELS instead, which cannot be compared to pixel values). Codes are 
+    # therefore read directly from the pixels, and labels (when the raster has 
+    # a category table) are only used to name the layers.
+    n_row <- nrow(r_proj)
+    n_col <- ncol(r_proj)
+    read_codes <- function(first_row, n_read) {
+        v <- readValues(r_proj, row = first_row, nrows = n_read)
+        if (!is.numeric(v)) {   # some terra versions can return labels
+            cat_table <- cats(r_proj)[[1]]
+            v <- cat_table[[1]][match(as.character(v), 
+                as.character(cat_table[[activeCat(r_proj) + 1]]))]
+        }
+        matrix(v, nrow = n_read, ncol = n_col, byrow = TRUE)
+    }
+    readStart(r_proj)   # r_proj is file-backed: it must be opened to read blocks
+    on.exit(try(readStop(r_proj), silent = TRUE), add = TRUE)
 
-    # Circular window: weight 1 inside the circle, NA outside.
-    # NA weights are ignored by focal(), so "mean" = proportion of valid
-    # pixels in the circle (NA pixels such as sea/outside the data are excluded).
-    w <- focalMat(r_proj, d = radius_m, type = "circle")
-    w[w > 0]  <- 1
-    w[w == 0] <- NA
-
-    prop_files <- character(n)
-    for (i in seq_len(n)) {
-        lab <- present[i]
-        cli_alert_info("Processing proportions for category {i} of {n}")
-
-        # 1 where the category is present, 0 elsewhere, NA kept where r_proj is NA
-        m_file <- file.path(tmp_dir, sprintf("m_%s.tif", lab))
-        m <- ifel(r_proj == lab, 1, 0,
-                filename = m_file, datatype = "INT1U", overwrite = TRUE)
-
-        prop_files[i] <- file.path(tmp_dir, sprintf("prop_%s.tif", lab))
-        p <- focal(m, w = w, fun = "mean", na.rm = TRUE,
-                filename = prop_files[i],
-                datatype = "FLT4S", overwrite = TRUE)
-
-        rm(m, p); gc()
-        unlink(m_file)
+    present_codes <- numeric(0)
+    for (first_row in seq(1, n_row, by = 500)) {
+        n_read <- min(500, n_row - first_row + 1)
+        present_codes <- union(
+            present_codes, unique(as.vector(read_codes(first_row, n_read))))
+    }
+    present_codes <- sort(present_codes[!is.na(present_codes)])
+    n <- length(present_codes)
+    if (n == 0) {
+        stop("The raster contains no data (only NAs) after clipping.")
     }
 
-    # Virtual stack, read lazily from disk
-    prop_stack <- rast(prop_files)
-    names(prop_stack) <- paste0("prop_", present, "_within_", radius_m, "m")
+    # Names of the layers: category label if available, else the code
+    present <- present_codes
+    if (is.factor(r_proj)) {
+        cat_table <- cats(r_proj)[[1]]
+        labels <- cat_table[[activeCat(r_proj) + 1]][
+            match(present_codes, cat_table[[1]])]
+        if (anyNA(labels)) {
+            cli_alert_warning(paste0(
+                "Pixel codes not found in the category table (",
+                paste(present_codes[is.na(labels)], collapse = ", "), 
+                "): using the codes as names."))
+            labels[is.na(labels)] <- present_codes[is.na(labels)]
+        }
+        present <- labels
+    }
+
+    # Circular window: 1 inside the circle, 0 outside (focalMat is used so the 
+    # window is exactly the one terra would use).
+    kernel <- (focalMat(r_proj, d = radius_m, type = "circle") > 0) * 1
+    half_r <- (nrow(kernel) - 1) / 2
+    half_c <- (ncol(kernel) - 1) / 2
+
+    # Blocks of rows: each block is read with `half_r` extra rows above and 
+    # below (needed to compute the proportions of the block's edge rows).
+    pad_c <- nextn(n_col + half_c, factors = c(2, 3, 5))  # fast FFT sizes
+    block_rows <- max(1, floor(max_fft_cells / pad_c) - 2 * half_r)
+    block_starts <- seq(1, n_row, by = block_rows)
+
+    # FFT of the zero-padded kernel, with its centre moved to the corner [1, 1]
+    # (circular convention). Cached because most blocks share the same size.
+    kernel_fft_cache <- list()
+    get_kernel_fft <- function(pad_r) {
+        key <- as.character(pad_r)
+        if (is.null(kernel_fft_cache[[key]])) {
+            k_pad <- matrix(0, pad_r, pad_c)
+            row_idx <- ((seq_len(nrow(kernel)) - 1 - half_r) %% pad_r) + 1
+            col_idx <- ((seq_len(ncol(kernel)) - 1 - half_c) %% pad_c) + 1
+            k_pad[row_idx, col_idx] <- kernel
+            kernel_fft_cache[[key]] <<- fft(k_pad)
+        }
+        kernel_fft_cache[[key]]
+    }
+
+    # Convolves a list of real matrices with the kernel (two matrices per FFT)
+    convolve_layers <- function(layers, pad_r) {
+        k_fft <- get_kernel_fft(pad_r)
+        n_r <- nrow(layers[[1]])
+        n_c <- ncol(layers[[1]])
+        convolved <- vector("list", length(layers))
+
+        for (s in seq(1, length(layers), by = 2)) {
+            has_pair <- (s + 1) <= length(layers)
+            z <- matrix(0 + 0i, pad_r, pad_c)
+            z[seq_len(n_r), seq_len(n_c)] <- complex(
+                real = layers[[s]],
+                imaginary = if (has_pair) layers[[s + 1]] else 0)
+            res <- fft(fft(z) * k_fft, inverse = TRUE) / (pad_r * pad_c)
+            
+            convolved[[s]] <- Re(res)[seq_len(n_r), seq_len(n_c), drop = FALSE]
+            if (has_pair) {
+                convolved[[s + 1]] <- Im(res)[seq_len(n_r), seq_len(n_c), drop = FALSE]
+            }
+        }
+        convolved
+    }
+
+    # Output: one layer of proportion per category, written block by block
+    prop_file <- file.path(tmp_dir, "prop_stack.tif")
+    prop_stack <- rast(r_proj, nlyrs = n)
+    writeStart(prop_stack, prop_file, overwrite = TRUE, datatype = "FLT4S")
+    
+    for (b in seq_along(block_starts)) {
+        cli_alert_info("Processing proportions, block {b} of {length(block_starts)}")
+        out_first <- block_starts[b]
+        out_last <- min(out_first + block_rows - 1, n_row)
+        in_first <- max(1, out_first - half_r)
+        in_last <- min(n_row, out_last + half_r)
+
+        values_in <- read_codes(in_first, in_last - in_first + 1)
+        is_valid <- !is.na(values_in)
+
+        # layer 1: valid (non-NA) pixels, layers 2..n+1: indicator of each class
+        layers <- c(
+            list(is_valid * 1),
+            lapply(present_codes, function(code) (is_valid & (values_in == code)) * 1))
+        pad_r <- nextn(nrow(values_in) + half_r, factors = c(2, 3, 5))
+        convolved <- convolve_layers(layers, pad_r)
+
+        # keep only the rows of the block (without the margins)
+        keep <- (out_first - in_first + 1):(out_last - in_first + 1)
+        n_valid <- convolved[[1]][keep, , drop = FALSE]
+        no_data <- n_valid < 0.5   # no valid pixel in the circle -> NA
+
+        block_values <- matrix(NA_real_, nrow = length(keep) * n_col, ncol = n)
+        for (i in seq_len(n)) {
+            prop <- convolved[[i + 1]][keep, , drop = FALSE] / n_valid
+            prop[no_data] <- NA
+            prop <- pmin(pmax(prop, 0), 1)   # removes floating point noise
+            block_values[, i] <- as.vector(t(prop))   # terra wants cells by row
+        }
+        writeValues(prop_stack, block_values, out_first, length(keep))
+        rm(values_in, is_valid, layers, convolved, n_valid, block_values); gc()
+    }
+    prop_stack <- writeStop(prop_stack)
+    readStop(r_proj)
+
+    # Sanity check: at pixels with data, proportions of all categories sum to 1
+    sum_check <- global(app(prop_stack, sum), "range", na.rm = TRUE)
+    if (any(abs(unlist(sum_check) - 1) > 1e-3)) {
+        stop("Proportions do not sum to 1 (range: ", 
+             paste(round(unlist(sum_check), 4), collapse = " - "), 
+             "). Codes found in pixels: ", paste(present_codes, collapse = ", "))
+    }
+    names(prop_stack) <- paste0(
+        "prop_", present, "_within_", as.integer(radius_m), "m")
 
     # Back to the original grid
-    out <- project(prop_stack, raster_layer, method = "bilinear",
+    out <- project(prop_stack, raster, method = "bilinear",
                     filename = file.path(tmp_dir, "prop_final.tif"),
                     datatype = "FLT4S", overwrite = TRUE)
     names(out) <- names(prop_stack)
     out
 }
 
-
 # A function to automatically simplify CLC categories and reduce its extent.
 # ARGS:
 #   - raster_path: a filepaths to a raster (.tif) file.
 #   - save_to: a filepath to save the new raster (must end with .tif).
-#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - a SpatRaster with several layers
 #       - first layer:  
@@ -1225,15 +1454,13 @@ save_simplified_clc <- function(
         raster <- rast(raster_path)
 
         # crop raster for faster computation
-        reduced_extent <- ext(
-                lon_min, lon_max, 
-                lat_min, lat_max) |>
-            as.polygons(crs = "EPSG:4326") |>
-            densify(interval = 0.1) |>
-            project("EPSG:3035")
-
-        cropped_raster <- crop(raster, reduced_extent)
-
+        cropped_raster <- crop(
+            raster, 
+            ext(get_extent_polygon(
+                crs(raster), 
+                lon_min, lon_max, lat_min, lat_max
+            ))
+        )
 
         # CLC contains (too) many categories. Subcategories can be grouped
         # together to avoid having too many modalities.
@@ -1248,28 +1475,47 @@ save_simplified_clc <- function(
             level_forests = 1,
             level_wetlands = 1,
             level_water = 1)
+        
+        # replace placeholder label
+        names(simplified_clc_raster) <- "land.cover"
+        
+        cli_alert_info(paste0(
+            "New categories: ",
+            paste(
+                unique(simplified_clc_raster$land.cover)$land.cover, 
+                collapse = ", "
+            ), 
+            "."
+        ))
 
-        # Once the categories are set, we need to convert this layer into a 
-        # set of numerical layers : each corresponding to the distance
-        # to the closest category in the "simplified_clc_raster"
+        # Once the categories are set, we can compute distances to each
+        # and proportion of each around pixels, this gives contextual 
+        # information that the model cannot have alternatively.
         cli_alert_info("Adding one layer per categories (distance layers)...")
-        distance_layers <- factorial_to_distance2factor(simplified_clc_raster)
+        distance_layers <- factorial_to_distances(simplified_clc_raster)
+
+        cli_alert_info("Adding one layer per categories (proportion layers)...")
+        # Using square diagonal, not its length for radius
+        rad <- sqrt(2*((1000*RES_KM)**2))
+        proportion_layers <- factorial_to_proportion(
+            simplified_clc_raster, radius_m = rad)
+        # Exclude proportion of "0" -> artifact coming from NA values.
+        proportion_layers[[paste0("prop_0_within_", as.integer(rad),"m")]] <- NULL
 
         cli_alert_info("Stacking new layers together...")
-        clc_stacked_raster <- rast(list(simplified_clc_raster, distance_layers))
+        clc_stacked_raster <- rast(
+            list(simplified_clc_raster, distance_layers, proportion_layers))
         
         cli_alert_info("Saving file...")
-        writeRaster(
-            project(clc_stacked_raster, "EPSG:4326"),  
-            save_to, overwrite = TRUE)
+        writeRaster(clc_stacked_raster, save_to, overwrite = TRUE)
         cli_alert_success(paste0(
             "Created simplified CORINE land cover raster file!\n\n"))
         
-        return(clc_stacked_raster)
+        return(fix_names(clc_stacked_raster))
     }
 }
 
-# A function to clip a raster to france metropolitan area and ensure crs WGS84
+# A function to clip a raster to france metropolitan area
 # ARGS:
 #   - raster: a SpatRaster.
 #   - save_to: a string or NULL. 
@@ -1281,7 +1527,7 @@ save_simplified_clc <- function(
 #       Is used to define a buffer around the raster (in km, approximative).
 # RETURNS:
 #   - clipped SpatRaster
-clip_raster_france_wgs84_crs <- function(
+clip_raster_france <- function(
         raster,  
         buffer, 
         verbose = TRUE,
@@ -1290,28 +1536,23 @@ clip_raster_france_wgs84_crs <- function(
     # import france shapefile with buffer to avoid clipping important data
     france_sf <- get_metropolitan_france_shapefile()
     france_sf_buffered <- france_sf |>
-        st_transform(2154) |>              # EPSG:2154 = RGF93, better conservation of distances
+        st_transform(PROJECT_CRS) |>    
         st_buffer(dist = buffer*1000) |> # buffer distance in meters
-        st_transform(crs(raster))   # transform to match raster's crs
-    
+        st_transform(crs(raster))        # transform to match raster's crs
+
     # reduce size of raster
     raster_cropped <- crop(raster, ext(france_sf_buffered))
     raster_clipped <- clip_raster_from_shapefile(
         raster_cropped, france_sf_buffered)
-    
-    if (verbose) {
-        cli_alert_info("Updating CRS, this might take some time...\n")
-    }
-    raster_wgs84 <- project(raster_clipped, "EPSG:4326")
 
     if (verbose) {
         cli_alert_info("Saving file...\n")
     }
 
     if (is.null(save_to)) {
-        return(raster_wgs84)
+        return(raster_clipped)
     } else {
-        writeRaster(raster_wgs84, save_to, overwrite = TRUE)  
+        writeRaster(raster_clipped, save_to, overwrite = TRUE)  
     }   
 }
 
@@ -1333,8 +1574,7 @@ standardized_raster_projection <- function(
     # Creating the paths that will be needed in the function
     raster_reprojected_path <- paste0(
         file_path_sans_ext(save_to_basename), 
-        "_projection_france_res", res_km,"km-WGS84",
-        ".tif")
+        "_projection_france_res", res_km, "km-", PROJECT_CRS_TAG, ".tif")
         
     if (!authorise_overwrite(raster_reprojected_path)) {
         # Check if file exists
@@ -1370,13 +1610,13 @@ standardized_hexagonal_projection <- function(
         save_to_basename,
         extraction_mode,
         res_km = RES_KM) {
-    cli_alert_info(paste0("Pre-processing of ", basename(raster_path), "..."))
+    
+    cli_alert_info(paste0("Pre-processing of raster..."))
 
     # Creating the paths that will be needed in the function
     shapefile_hexagons_path <- paste0(
         file_path_sans_ext(save_to_basename), 
-        "_projection_france_hexagons_res", res_km,"km-WGS84",
-        ".gpkg")
+        "_projection_france_hexagons_res", res_km, "km-", PROJECT_CRS_TAG, ".gpkg")
 
 
     if (!authorise_overwrite(shapefile_hexagons_path)) {
@@ -1386,7 +1626,12 @@ standardized_hexagonal_projection <- function(
     } else {
         cli_alert_info("Loading raster...")
         # import and reproject to a standardized grid of hexagons
-        raster <- rast(raster_path)
+        if (!inherits(raster_path, "SpatRaster")) {
+            raster <- rast(raster_path)
+        } else {
+            raster <- raster_path
+        }
+        
         . <- project_to_hexagons(
                 raster = raster, 
                 save_to = shapefile_hexagons_path, 

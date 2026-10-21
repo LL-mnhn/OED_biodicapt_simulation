@@ -16,6 +16,7 @@ suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))
 
 ##### Parameters ##### --------------------------------------------------------
 source(here::here(file.path("data","config","config.R"))) # Global parameters
+set.seed(42) # reproducibility 
 
 if (authorise_overwrite(RESULTS_PATH)) {
     unlink(RESULTS_PATH, recursive = TRUE)
@@ -27,7 +28,6 @@ if (authorise_overwrite(RESULTS_PATH)) {
 
 ### Variables
 FORMULA <- reformulate(X_VARIABLES)
-
 
 ### MCMC
 NSAMPLES <- 1500 # mcmc will stop after saving that much samples
@@ -44,14 +44,43 @@ EFFECTS <- list(
         NEW_SAMPLE_SIZES = c(0),
         STRATEGIES = c("none")
     ),
+    # Reference effects (ALWAYS the first element)
+    list(
+        R_EFFECTS = c("site"), 
+        NEW_SAMPLE_SIZES = c(0),
+        STRATEGIES = c("none")
+    ),
     # Add new samples according to different strategies
     list(
-        R_EFFECTS = c("none"), 
+        R_EFFECTS = c("none", "site"), 
         NEW_SAMPLE_SIZES = c(10, 25, 50, 100, 150),
         STRATEGIES = c(
-            "business-as-usual", "gap-filling", "simplified-I-optimality", 
-            "2-part-simplified-I-optimality", "5-part-simplified-I-optimality", 
-            "10-part-simplified-I-optimality")
+            "random-sampling", "gap-filling", "max-uncertainty", 
+            "3-part-max-uncertainty", "5-part-max-uncertainty",
+            "ds-optimality", "i-optimality")
+    )
+)
+REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
+saveRDS(EFFECTS, file.path(RESULTS_PATH, "effects.rds"))
+
+
+##### TEMP OVERRIDE OF PARAMETERS ##### ---------------------------------------
+cli_alert_danger("TEMPORARY OVERRIDE OF PARAMETERS, DO NOT PUSH.")
+# Each list is a combination of parameters to use to train the model
+NCHAINS <- 3
+EFFECTS <- list(
+    # Reference effects (ALWAYS the first element)
+    list(
+        R_EFFECTS = c("site"), 
+        NEW_SAMPLE_SIZES = c(0),
+        STRATEGIES = c("none")
+    ),
+    # Add new samples according to different strategies
+    list(
+        R_EFFECTS = c("site"), 
+        NEW_SAMPLE_SIZES = c(50),
+        STRATEGIES = c("random-sampling", "max-uncertainty",
+                       "ds-optimality", "i-optimality")
     )
 )
 REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
@@ -59,6 +88,7 @@ saveRDS(EFFECTS, file.path(RESULTS_PATH, "effects.rds"))
 
 
 ##### Local functions ##### ---------------------------------------------------
+# A function that prepares datasets (samples random observations on each site)
 prepare_datasets <- function(detection_probability = 0.95) {
     # load simulated presence_absence maps (dont forget to unwrap SpatRasters)
     pa_obs <- unwrap_simulations(readRDS(
@@ -71,9 +101,9 @@ prepare_datasets <- function(detection_probability = 0.95) {
     all_datasets <- vector("list", K_FOLDS)
     for (k in 1:K_FOLDS) {
         # initialise locations (useless columns will be removed)
-        train_df <- fix_names(vect(BIODICAPT_OBS_FULL))
-        new_pool_df <- fix_names(vect(ENI500_OBS_FULL))
-        test_df <- fix_names(vect(STOC_OBS_FULL))
+        biodicapt_df <- fix_names(vect(BIODICAPT_OBS_TRF))
+        eni500_df <- fix_names(vect(ENI500_OBS_TRF))
+        stoc_df <- fix_names(vect(STOC_OBS_TRF))
         
         for (sp_i in 1:length(NAME_SP_SIMUL)) {
             cli_status_update(
@@ -82,33 +112,33 @@ prepare_datasets <- function(detection_probability = 0.95) {
                     "[k-fold {k}/{K_FOLDS}]: Observation of sp {sp_i}/{length(NAME_SP_SIMUL)}...")
             )
             # Use CustomSampleOccurences for fixed locations
-            train_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            biodicapt_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                train_df,
+                biodicapt_df,
                 detection.probability = detection_probability
             )
-            new_pool_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            eni500_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                new_pool_df,
+                eni500_df,
                 detection.probability = detection_probability
             )
-            test_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            stoc_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                test_df,
+                stoc_df,
                 detection.probability = detection_probability
             )
         }
 
         # clean columns
-        all_datasets[[k]]$train <- train_df |>
+        all_datasets[[k]]$train <- biodicapt_df |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_train_", 1:nrow(train_df)))
-        all_datasets[[k]]$new_pool <- new_pool_df |>
+            mutate(row_id = paste0("id_biodicapt_", 1:nrow(biodicapt_df)))
+        all_datasets[[k]]$new_pool <- eni500_df |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_new_pool_", 1:nrow(new_pool_df)))
-        all_datasets[[k]]$test <- test_df |>
+            mutate(row_id = paste0("id_eni500_", 1:nrow(eni500_df)))
+        all_datasets[[k]]$test <- stoc_df |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_test_", 1:nrow(test_df)))
+            mutate(row_id = paste0("id_stoc_", 1:nrow(stoc_df)))
     }
 
     cli_status_clear(status_msg)
@@ -117,14 +147,35 @@ prepare_datasets <- function(detection_probability = 0.95) {
     return(all_datasets)
 }
 
+# A function that adds new sites (taken from a pool of candidates) to a design.
+# ARGS:
+#   - strat: a string, the strategy used to choose new sites. One of:
+#       "none", "random-sampling", "gap-filling", "max-uncertainty",
+#       "ds-optimality", "i-optimality".
+#   - base_subset: a dataframe, the current design (training set).
+#   - extension_subset: a dataframe, the candidates (must have a `row_id`).
+#   - new_sample_size: an integer, the number of sites to add.
+#   - variables: a vector of strings, the names of the explanatory variables.
+#   - hM: a Hmsc model fitted on base_subset (needed by max-uncertainty, 
+#       ds-optimality and i-optimality, ignored otherwise).
+#   - actionable: a vector of strings, the variables of interest (only used 
+#       when strat="ds-optimality"). Other coefficients are nuisance parameters.
+#   - target_set: a dataframe of sites where predictions should be as precise
+#       as possible (only used when strat="i-optimality"). Default is NULL: 
+#       the candidates are used as a proxy for the region of interest.
+# RETURNS:
+#   - base_subset with the selected rows of extension_subset appended.
 extended_training_design <- function(
-    strat, base_subset, extension_subset, new_sample_size, variables, hM) {
+    strat, base_subset, extension_subset, new_sample_size, variables, hM,
+    actionable = ACTIONABLE_VARIABLES, target_set = NULL) {
+    strat <- tolower(strat)
+
     # dataset changes depending on chosen strat
     if ((strat == "none") || (new_sample_size == 0)) {
         # No addition of data to base_subet
         extended_set <- base_subset
-    } else if (strat == "business-as-usual") {
-        # Business-as-usual: random sampling
+    } else if (strat == "random-sampling") {
+        # Random sampling: choose points at random
         cli_alert_info(
             paste0("Pulling ", new_sample_size, " new random samples..."))
         extended_set <- bind_rows(
@@ -149,14 +200,14 @@ extended_training_design <- function(
                 extended_set,
                 extension_subset[idx_highest_min_distance, ])
         }
-    } else if (strat == "simplified-I-optimality") {
+    } else if (strat == "max-uncertainty") {
         # This is the method used in doi.org/10.1111/2041-210X.14355
         # In short: sample where uncertainty is the highest.
         # Here, we create a "layer" and pick the most uncertain samples at once
-        cli_alert_warning("Running simplified-I-optimality...")
+        cli_alert_warning("Running max-uncertainty...")
 
-        # TODO: We exclude base_subset but ACTUALLY it might be interesting
-        # to resample on already sampled positions to improve performance...
+        # Warning: We exclude base_subset but, later, it might actually be 
+        # interesting to resample on positions that were already sampled
         uncertainty <- get_uncertainty_hmsc(
             hM = hM, 
             df = extension_subset, 
@@ -167,9 +218,64 @@ extended_training_design <- function(
                 base_subset,
                 extension_subset[idx_most_uncertain, ])
     
+    } else if (strat %in% c("ds-optimality", "i-optimality")) {
+        # "Greedy" selection: building the set of new sites one at a time.
+        # The selection uses a criteria based on the Fisher information
+        # matrix of each species, approximated from the posterior of `hM`:
+        #   1. Start from the current information matrix (reference model)
+        #   2. Score every remaining candidate.
+        #   3. Add the best candidate and updated the information matrix
+        #   4. Repeat (without redrawing of the same candidates)
+        #
+        # Notes:
+        #   - Hmsc standardises X by default but returns Beta back on the 
+        #     original scale of X, so XScale = FALSE is NOT needed. 
+        #     get_hmsc_information() takes care of using X and Beta on the same
+        #     scale (and of standardising them for numerical stability).
+        #   - Works with no random effect and with "site" random effects (which
+        #     only attenuate the information of each observation). A spatial 
+        #     random effect is currently not supported (stops with an error).
+        #   - Criteria are summed over species (with equal weights).
+        #   - I-optimality ignores correlation between species residuals and 
+        #     approximates probit with a linear model.
+        if (is.null(hM)) {
+            stop("Strategy '", strat, "' needs a fitted model (`hM`).")
+        }
+        cli_alert_info(paste0("Searching for the best ", new_sample_size, 
+            " points according to ", strat, "..."))
+        
+        # candidates with missing covariates cannot be scored (never selected)
+        candidates <- extension_subset[complete.cases(extension_subset[variables]), ]
+        info <- get_hmsc_information(hM, candidates, variables)
+
+        if (strat == "ds-optimality") {
+            idx_params <- match(actionable, hM$covNames)
+            if (anyNA(idx_params)) {
+                stop("`actionable` contains variables absent from the model.")
+            }
+            idx_selected <- greedy_design(
+                M0 = info$M0, X = info$X, w = info$w, 
+                n_select = new_sample_size, 
+                criterion = "ds", idx_params = idx_params)
+        } else {
+            if (is.null(target_set)) {
+                target_set <- candidates
+            }
+            target_set <- target_set[complete.cases(target_set[variables]), ]
+            idx_selected <- greedy_design(
+                M0 = info$M0, X = info$X, w = info$w, 
+                n_select = new_sample_size, 
+                criterion = "i", B = get_prediction_moments(info, target_set))
+        }
+
+        extended_set <- bind_rows(
+            base_subset,
+            candidates[idx_selected, ])
+
     } else {
         stop(paste0("Unknown strategy: '", strat, "'."))
     }
+
     return(extended_set)
 }
 
@@ -178,7 +284,8 @@ optimise_model_training <- function(
         params, 
         run_k_fold, run_folder_path,
         x_variables = X_VARIABLES, y_species = NAME_SP_SIMUL,
-        ref_model_effects = REFERENCE_EFFECTS) {
+        ref_model_effects = REFERENCE_EFFECTS,
+        actionable = ACTIONABLE_VARIABLES, target_set = NULL) {
     # Verify data formats
     if (inherits(training_set, "SpatVector")) {
         training_set <- as.data.frame(training_set)
@@ -206,14 +313,18 @@ optimise_model_training <- function(
         nchar(strategy))
     n_new_samples_per_part <- split_evenly(params$NEW_SAMPLE_SIZES, n_parts)
     
-    if (grepl("simplified-I-optimality", strategy)) {
-        # when using uncertainty model, we need to have an initial model to
-        # compute the uncertainty on. For that, we can use the BASE_MODEL
+    if (tolower(strategy_alone) %in% 
+            c("max-uncertainty", "ds-optimality", "i-optimality")) {
+        # these strategies need an initial model to compute uncertainty / 
+        # information on. For that, we can use the BASE_MODEL, fitted with the 
+        # same random effects as the current run.
         previous_model <- readRDS(
             file.path(
                 make_run_path(
                     folder = dirname(run_folder_path), 
-                    params = ref_model_effects,
+                    params = modifyList(
+                        ref_model_effects, 
+                        list(R_EFFECTS = params$R_EFFECTS)),
                     k_fold = run_k_fold
                 ),  
                 "chains.rds"))
@@ -238,7 +349,12 @@ optimise_model_training <- function(
             extension_subset = remaining_pool,
             new_sample_size = n_new_samples_per_part[part],
             variables = x_variables,
-            hM = previous_model)
+            hM = previous_model,
+            actionable = actionable,
+            target_set = target_set)
+        # points added to training_set must be removed from remaining_pool
+        remaining_pool <- remaining_pool |>
+            filter(!(row_id %in% training_set$row_id))
         
         # 1. Fit model
         cat("\n")
@@ -316,9 +432,9 @@ for (k in seq(K_FOLDS)) {
             remaining_pool = datasets[[k]]$new_pool,
             params = local_parameters, 
             run_k_fold = k, run_folder_path = local_path_results) 
-        # Save extended training set 
+        # Save new_pool IDs
         saveRDS(
-            grep("train", opt_model$base_dataset$row_id, value = TRUE, invert = TRUE), 
+            grep("id_eni500", opt_model$base_dataset$row_id, value = TRUE, invert = FALSE), 
             file.path(local_path_results, "ID_new_samples.rds"))
     
         # 2. Analysis of convergence

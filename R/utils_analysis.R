@@ -520,12 +520,12 @@ make_umap_and_plots <- function(
     return(list(umap = umap_res, plot_ind = p_ind, embedding_full = emb))
 }
 
-# A function that that transforms a dataframe with EXPLORE_COLUMNS and k_folds
-# columns into a dataframe of 3 columns : k_folds x names(EXPLORE_COLUMNS) x
-# values in EXPLORE_COLUMNS. It enables the comparison of variables across
+# A function that that transforms a dataframe with X_VARIABLES and k_folds
+# columns into a dataframe of 3 columns : k_folds x names(X_VARIABLES) x
+# values in X_VARIABLES It enables the comparison of variables across
 # k_folds between dataframes.
 # ARGS:
-#   - df: a data.frame containing EXPLORE_COLUMNS and group_col.
+#   - df: a data.frame containing X_VARIABLES and group_col.
 #   - group_label: a string. When given, overwrite (or rather, creates) content
 #       in column "k_folds" with this label.
 #   - group_col: a string. The name of k_folds column, that are into their 
@@ -534,13 +534,13 @@ make_umap_and_plots <- function(
 #   - a data.frame.
 to_long <- function(df, group_label = NULL, group_col = "k_folds") {
     out <- df |>
-        select(any_of(group_col), all_of(EXPLORE_COLUMNS)) |>
+        select(any_of(group_col), all_of(X_VARIABLES)) |>
         pivot_longer(
-            cols = all_of(EXPLORE_COLUMNS),
+            cols = all_of(X_VARIABLES),
             names_to = "variable",
             values_to = "value"
         ) |>
-        mutate(variable = factor(variable, levels = EXPLORE_COLUMNS))
+        mutate(variable = factor(variable, levels = X_VARIABLES))
 
     if (!is.null(group_label)) out[[group_col]] <- group_label
     out[[group_col]] <- as.character(out[[group_col]])

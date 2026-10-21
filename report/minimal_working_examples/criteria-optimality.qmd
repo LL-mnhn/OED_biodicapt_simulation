@@ -1,0 +1,427 @@
+---
+title: "Optimality criterion"
+subtitle: "A minimal working example"
+
+author:
+  - name: Loïc Lehnhoff
+    orcid: 0000-0002-2100-6626
+    email: loic.lehnhoff@mnhn.fr
+    affiliation: UMR CESCO
+    role: 
+        - writing
+        - visualization
+        - analysis
+        - data curation
+        - methodology
+  - name: Karine Princé
+    affiliation: UMR CESCO
+    role:
+        - supervision
+        - methodology
+  - name: Nicolas Parisey
+    affiliation: UMR IGEPP
+    role:
+        - supervision
+        - methodology
+
+date: last-modified
+date-format: iso
+
+toc: true
+toc-location: right
+toc-depth: 4
+toc-expand: 2
+number-sections: true
+
+theme:
+  light: cosmo
+
+execute:
+  fig-format: png
+  fig-dpi: 300
+  dev: cairo_pdf
+
+format:
+  html:
+    embed-resources: true
+    page-layout: article
+  pdf:
+    documentclass: article
+    papersize: a4
+    geometry:
+      - margin=30mm
+---
+# A worked applied example: a gradient in a square
+
+We simulate a situation on a unit square $[0,1]^2$:
+
+- **Environment:** Two covariates vary over the square: $x_1$ increases from west to east (with a small north-south wave), and $x_2$ is partly correlated with $x_1$. The probability of presence of a species is $\Phi(\beta_0 + \beta_1 x_1 + \beta_2 x_2)$, so it increases from west to east.
+- **Existing data:** 50 sites arranged in 5 clusters of 10 sites, with the clusters spread over the square. Sites within a cluster are close to each other, so they carry largely redundant information about the gradient: the existing data are well spread geographically but contain only about 5 distinct environmental "situations".
+- **Candidates:** 1000 sites randomly distributed over the square.
+- **Budget**: we can sample 10 % of the candidates (100 sites).
+- **Goal**: estimate $\beta_1$ (the effect of $x_1$) as precisely as possible, with $\beta_0$ and $\beta_2$ as nuisance parameters ($s = 1$).
+
+We compare five strategies on the Ds-criterion and I-criterion of the final design (existing + selected sites), and on other metrics: SD of the parameters, SD of the predictions and RMSE of the predictions. 
+
+Ds-optimality and I-optimality metrics will allow us to show that: *the best design for inference is not the best design for prediction*.
+
+::: {.callout-note}
+## Planning values
+Information in a probit model depends on $\beta$, so we need a guess. Here we use the true values (in practice, we will use the posterior mean of the reference model). Since $s = 1$, the criterion has a direct reading:
+$\operatorname{Var}(\hat\beta_1) \approx \exp(-\Phi_{D_s})$, i.e. $\mathrm{SE}(\hat\beta_1) \approx \exp(-\Phi_{D_s}/2)$.
+:::
+
+## Setting up the square
+```{r}
+#| label: applied-setup
+set.seed(2026)
+
+# environmental fields over the square
+x1_field <- function(u, v) 3 * (u - 0.5) + 0.4 * sin(2 * pi * v)   # west-east gradient
+x2_field <- function(u, v) 2 * (v - 0.5) + 1.2 * (u - 0.5)         # partly confounded with x1
+beta_true <- c(b0 = -0.2, b1 = 0.9, b2 = 0.5)                      # planning values
+design_matrix <- function(u, v) cbind("(Intercept)" = 1, x1 = x1_field(u, v), x2 = x2_field(u, v))
+
+# probit weights: information of one binary observation about its linear predictor
+probit_weights <- function(eta, eps = 1e-8) {
+  p <- pmin(pmax(pnorm(eta), eps), 1 - eps)
+  dnorm(eta)^2 / (p * (1 - p))
+}
+
+# candidate sites: uniformly distributed
+n_cand   <- 1000
+cand     <- data.frame(u = runif(n_cand), v = runif(n_cand))
+X_cand   <- design_matrix(cand$u, cand$v)
+eta_cand <- as.numeric(X_cand %*% beta_true)
+w_cand   <- probit_weights(eta_cand)
+
+# existing design: 5 clusters of 10 sites, spread over the square
+n_per_cluster <- 10
+centres <- data.frame(u = c(0.15, 0.80, 0.45, 0.20, 0.65),
+                      v = c(0.20, 0.15, 0.50, 0.45, 0.90))
+n_ref   <- nrow(centres) * n_per_cluster
+ref     <- data.frame(
+  u = pmin(pmax(rep(centres$u, each = n_per_cluster) + rnorm(n_ref, sd = 0.04), 0), 1),
+  v = pmin(pmax(rep(centres$v, each = n_per_cluster) + rnorm(n_ref, sd = 0.04), 0), 1))
+X_ref  <- design_matrix(ref$u, ref$v)
+w_ref  <- probit_weights(as.numeric(X_ref %*% beta_true))
+M_ref  <- crossprod(X_ref, X_ref * w_ref)       # information of the existing design
+
+n_select <- 0.10 * n_cand                        # budget: 10 % of the candidates
+idx_s    <- 2                                    # (for the Ds-optimal design: beta_1)
+
+# design space: where we want precise predictions (a regular grid on the square)
+g_test   <- seq(0, 1, length.out = 40)
+test     <- expand.grid(u = g_test, v = g_test)
+X_test   <- design_matrix(test$u, test$v)
+eta_test <- as.numeric(X_test %*% beta_true)
+p_test   <- pnorm(eta_test)
+
+# B: average, over the design space, of phi(eta)^2 x x'
+B_test <- crossprod(X_test * dnorm(eta_test)) / nrow(X_test)
+
+# I-criterion: average prediction variance over the design space (lower is better)
+i_value <- function(M) sum(diag(solve(M, B_test)))
+
+# I-criterion of the final design (existing + selected sites)
+i_design <- function(sel) {
+  Xs <- X_cand[sel, , drop = FALSE]
+  i_value(M_ref + crossprod(Xs, Xs * w_cand[sel]))
+}
+
+# Ds-criterion (see the Ds example): only used to compare with the I-optimal design
+ds_logdet <- function(M, idx_s) {
+  S <- M[idx_s, idx_s, drop = FALSE] -
+    M[idx_s, -idx_s, drop = FALSE] %*%
+    solve(M[-idx_s, -idx_s, drop = FALSE], M[-idx_s, idx_s, drop = FALSE])
+  as.numeric(determinant(S, logarithm = TRUE)$modulus)
+}
+```
+
+```{r}
+#| label: applied-map
+#| fig-width: 6
+#| fig-height: 5.5
+# map of the true probability of presence
+g       <- seq(0, 1, length.out = 120)
+p_field <- outer(g, g, function(u, v) {
+  pnorm(beta_true[1] + beta_true[2] * x1_field(u, v) + beta_true[3] * x2_field(u, v))
+})
+pal <- colorRampPalette(c("#ffffe5", "#41b6c4", "#081d58"))(60)   # light = rare, dark = likely
+
+image(g, g, p_field, col = pal, zlim = c(0, 1), asp = 1,
+      xlab = "u (west - east)", ylab = "v (south - north)",
+      main = "Probability of presence, candidate and existing sites")
+points(cand$u, cand$v, pch = 16, cex = 0.4, col = adjustcolor("black", 0.35))
+points(ref$u,  ref$v,  pch = 17, cex = 0.9, col = "firebrick")
+legend("bottomright", bg = "white", cex = 0.8,
+       legend = c("candidate sites (500 ENI)", "existing sites (BIODICAPT)"),
+       pch = c(16, 17), col = c(adjustcolor("black", 0.5), "firebrick"))
+```
+
+## The five strategies
+
+1. **Random**: 100 candidates drawn at random (repeated 200 times to get a distribution).
+2. **Gap-filling**: repeatedly add the candidate **farthest in geographic space** from all existing and already-selected sites.
+3. **Max uncertainty**: take the 100 candidates with the highest posterior standard deviation of the predicted probability under the reference model (delta method: $\varphi(\eta)\sqrt{x^\top M_{\text{ref}}^{-1}x}$), in several batches.
+4. **Greedy Ds**: repeatedly add the candidate with the largest gain in the Ds-criterion of $\beta_1$ (see the Ds example). Included for contrast.
+5. **Greedy I**: repeatedly add the candidate with the largest exact decrease of the I-criterion. Adding a site with weight $w$ and covariates $x$ gives $M' = M + w\,xx^\top$, and by the Sherman–Morrison formula:
+
+$$
+\operatorname{tr}(M^{-1}B) - \operatorname{tr}(M'^{-1}B) \;=\; \frac{a^\top B\, a}{1/w + x^\top M^{-1} x}, \qquad a = M^{-1}x .
+$$
+
+All candidates are scored at once with matrix products, then $M$ is updated and the process is repeated. Note that max uncertainty is the same computation than Greedy I with $B$ replaced by the candidate itself: it only looks at the variance at the candidate, whereas the I-criterion looks at how much the variance over the whole region decreases. A candidate that is uncertain but isolated in the covariate space can be a good max-uncertainty pick and a poor I-optimal one, and many similar uncertain candidates are redundant for I-optimality (after the first, the others bring little).
+
+```{r}
+#| label: applied-strategies
+# 1. random
+sel_random <- sample(n_cand, n_select)
+
+# 2. gap-filling (farthest-point sampling, relative to the existing sites)
+gap_filling <- function(coords, coords_ref, n_select) {
+  d_cand <- as.matrix(dist(coords))
+  d_ref  <- as.matrix(dist(rbind(coords_ref, coords)))[-seq_len(nrow(coords_ref)),
+                                                     seq_len(nrow(coords_ref))]
+  min_d <- apply(d_ref, 1, min)
+  sel <- integer(0)
+  for (k in seq_len(n_select)) {
+    nxt   <- which.max(min_d)
+    sel   <- c(sel, nxt)
+    min_d <- pmin(min_d, d_cand[nxt, ])
+  }
+  sel
+}
+sel_gap <- gap_filling(cand[, c("u", "v")], ref[, c("u", "v")], n_select)
+
+# 3. max uncertainty, selected in sequential batches
+max_uncertainty_batches <- function(M0, X, eta, w, n_select, n_batches) {
+  M <- M0
+  cand_left <- seq_len(nrow(X))
+  sel <- integer(0)
+  batch_size <- ceiling(n_select / n_batches)
+
+  while (length(sel) < n_select) {
+    Minv <- solve(M)
+    leverage <- rowSums((X[cand_left, , drop = FALSE] %*% Minv) *
+                         X[cand_left, , drop = FALSE])
+    sd_p <- dnorm(eta[cand_left]) * sqrt(pmax(leverage, 0))
+
+    k <- min(batch_size, n_select - length(sel))
+    batch <- cand_left[order(sd_p, decreasing = TRUE)[seq_len(k)]]
+
+    M <- M + crossprod(X[batch, , drop = FALSE],
+                       X[batch, , drop = FALSE] * w[batch])
+
+    sel <- c(sel, batch)
+    cand_left <- setdiff(cand_left, batch)
+  }
+  sel
+}
+sel_uncert <- max_uncertainty_batches(
+  M0 = M_ref, X = X_cand, eta = eta_cand, w = w_cand,
+  n_select = n_select, n_batches = 10)
+
+# 4. greedy Ds (closed-form gain, M updated after each addition)
+greedy_ds <- function(M0, X, w, idx_s, n_select) {
+  M <- M0; cand_left <- seq_len(nrow(X)); sel <- integer(0)
+  for (k in seq_len(n_select)) {
+    Minv <- solve(M)
+    S    <- solve(Minv[idx_s, idx_s, drop = FALSE])
+    A    <- Minv %*% t(X[cand_left, , drop = FALSE])
+    q    <- 1 / w[cand_left] + colSums(t(X[cand_left, , drop = FALSE]) * A)
+    aS   <- A[idx_s, , drop = FALSE]
+    gain <- -log(1 - colSums(aS * (S %*% aS)) / q)
+    best <- cand_left[which.max(gain)]
+    M    <- M + w[best] * tcrossprod(X[best, ])
+    sel  <- c(sel, best); cand_left <- setdiff(cand_left, best)
+  }
+  sel
+}
+sel_ds <- greedy_ds(M_ref, X_cand, w_cand, idx_s, n_select)
+
+# 5. greedy I (closed-form decrease of tr(M^-1 B), M updated after each addition)
+greedy_i <- function(M0, X, w, B, n_select) {
+  M <- M0; cand_left <- seq_len(nrow(X)); sel <- integer(0)
+  for (k in seq_len(n_select)) {
+    Minv <- solve(M)
+    A    <- Minv %*% t(X[cand_left, , drop = FALSE])          # a = M^-1 x  (p x m)
+    q    <- 1 / w[cand_left] + colSums(t(X[cand_left, , drop = FALSE]) * A)
+    gain <- colSums(A * (B %*% A)) / q                        # a' B a / q
+    best <- cand_left[which.max(gain)]
+    M    <- M + w[best] * tcrossprod(X[best, ])
+    sel  <- c(sel, best); cand_left <- setdiff(cand_left, best)
+  }
+  sel
+}
+sel_i <- greedy_i(M_ref, X_cand, w_cand, B_test, n_select)
+```
+
+A quick sanity check of the closed form: the decrease announced by the formula for one candidate must be the same as the decrease obtained by actually adding the site and recomputing $\operatorname{tr}(M^{-1}B)$.
+
+```{r}
+#| label: applied-check
+x1c <- X_cand[1, ]; w1 <- w_cand[1]
+a   <- solve(M_ref, x1c)
+formula_gain <- as.numeric(t(a) %*% B_test %*% a / (1 / w1 + sum(x1c * a)))
+direct_gain  <- i_value(M_ref) - i_value(M_ref + w1 * tcrossprod(x1c))
+stopifnot(isTRUE(all.equal(formula_gain, direct_gain)))
+c(formula = formula_gain, direct = direct_gain)
+```
+
+## Where do the strategies put the new sites?
+
+```{r}
+#| label: applied-sites
+#| fig-width: 8
+#| fig-height: 12
+par(mfrow = c(3, 2), mar = c(3, 3, 3, 1))
+plot_sel <- function(sel, title) {
+  image(g, g, p_field, col = pal, zlim = c(0, 1), asp = 1, xlab = "", ylab = "",
+        main = sprintf("%s\nI = %.4f", title, i_design(sel)), cex.main = 0.95)
+  points(ref$u, ref$v, pch = 17, cex = 0.6, col = "firebrick")
+  points(cand$u[sel], cand$v[sel], pch = 21, bg = "white", col = "black", cex = 0.8)
+}
+plot_sel(sel_random, "Random (one draw)")
+plot_sel(sel_gap, "Gap-filling")
+plot_sel(sel_uncert, "Max uncertainty")
+plot_sel(sel_ds, "Greedy Ds (beta_1)")
+plot_sel(sel_i, "Greedy I")
+```
+
+Red triangles are the existing sites and white circles the 100 selected sites.
+
+## Beyond the I-criterion: other metrics
+
+| Metric | What it measures | How it is computed |
+|---|---|---|
+| **SD of the parameters** | uncertainty of $\hat\beta_0,\hat\beta_1,\hat\beta_2$ | $\sqrt{\operatorname{diag}(M^{-1})}$ (Fisher, at the planning values) |
+| **SD of the predictions** | uncertainty of the predicted probability of presence, averaged over the square | delta method: $\varphi(\eta(x))\sqrt{x^\top M^{-1}x}$, averaged over a $40\times40$ grid |
+| **RMSE of the predictions** | error of the predicted probability against the truth | Monte Carlo: simulate presence/absence at existing + selected sites, refit a probit regression, predict the grid, compare with the true probability, average over replicates |
+| **Ds** | precision of $\beta_1$, adjusted for $\beta_0,\beta_2$ | $\log\det$ of the Schur complement of $M$ |
+| **I** | average variance of the predicted probability over the square | $\operatorname{tr}(M^{-1}B)$ (Fisher, at the planning values) |
+
+The RMSE is a simulation, so it also includes the noise of the data and any bias of the fit.
+
+```{r}
+#| label: applied-evaluate
+# all metrics of one design (a vector of selected candidate indices)
+evaluate_design <- function(sel, n_rep) {
+  Xs <- X_cand[sel, , drop = FALSE]
+  M  <- M_ref + crossprod(Xs, Xs * w_cand[sel])    # information of the final design
+  C  <- solve(M)                                   # approximate covariance of beta_hat
+
+  out <- c(
+    I       = i_value(M),
+    sd_pred = mean(dnorm(eta_test) * sqrt(rowSums((X_test %*% C) * X_test))),
+    sd_b0   = sqrt(C[1, 1]),
+    sd_b1   = sqrt(C[2, 2]),
+    sd_b2   = sqrt(C[3, 3]),
+    Ds      = ds_logdet(M, idx_s)
+  )
+
+  # Monte Carlo: simulate data, refit, predict
+  X_fit <- rbind(X_ref, Xs)
+  p_fit <- pnorm(as.numeric(X_fit %*% beta_true))
+  fits <- replicate(n_rep, {
+    y <- rbinom(nrow(X_fit), 1, p_fit)
+    tryCatch(
+      suppressWarnings(glm.fit(X_fit, y, family = binomial("probit"))$coefficients),
+      error = function(e) rep(NA_real_, 3))
+  })                                                # 3 x n_rep
+  fits <- fits[, !is.na(colSums(fits)), drop = FALSE]
+  rmse <- mean(apply(fits, 2, function(b) sqrt(mean((pnorm(X_test %*% b) - p_test)^2))))
+
+  c(out, rmse = rmse)
+}
+
+# 200 random designs (20 replicates each) and the four other strategies (200 replicates)
+n_random     <- 200
+rand_designs <- replicate(n_random, sample(n_cand, n_select), simplify = FALSE)
+rand_res     <- t(sapply(rand_designs, evaluate_design, n_rep = 20))
+
+strategies <- list("Gap-filling" = sel_gap, "Max uncertainty" = sel_uncert,
+                   "Greedy Ds" = sel_ds, "Greedy I" = sel_i)
+strat_res  <- t(sapply(strategies, evaluate_design, n_rep = 200))
+```
+
+```{r}
+#| label: applied-results
+#| fig-width: 8
+#| fig-height: 7
+cols <- c("Gap-filling" = "darkorange", "Max uncertainty" = "forestgreen",
+          "Greedy Ds" = "steelblue", "Greedy I" = "firebrick")
+ltys <- c("Gap-filling" = 2, "Max uncertainty" = 3, "Greedy Ds" = 4, "Greedy I" = 1)
+
+# histogram of a metric over random designs, with the other strategies as vertical lines
+# (the x-range must include the strategies: abline() draws nothing outside the plot region)
+metric_hist <- function(metric, main, xlab, loc_legend = "topleft") {
+    vals <- c(rand_res[, metric], strat_res[, metric])
+    pad  <- 0.05 * diff(range(vals))
+    hist(rand_res[, metric], breaks = 25, col = "grey85", border = "white",
+        xlim = range(vals) + c(-pad, pad), main = main, xlab = xlab, ylab = "random designs")
+    for (s in rownames(strat_res)) {
+        abline(v = strat_res[s, metric], col = cols[s], lty = ltys[s], lwd = 2)
+    }
+    legend(loc_legend, bty = "n", cex = 0.85,
+        legend = c("random designs (200)", names(cols)),
+        col = c("grey70", cols),
+        lty = c(NA, ltys), pch = c(15, NA, NA, NA, NA), lwd = c(NA, 2, 2, 2, 2))
+}
+```
+
+::: {.panel-tabset}
+#### SD of $\beta_1$
+```{r}
+metric_hist("sd_b1", "SD of beta_1 (Fisher)\n(lower is better)",    "approximate SD of the estimate", loc_legend="topright")
+```
+
+#### SD of predictions
+```{r}
+metric_hist("sd_pred", "SD of predictions\n(lower is better)",        "mean SD of the predicted probability", loc_legend="topright")
+```
+
+#### RMSE
+```{r}
+metric_hist("rmse", "RMSE of predictions\n(lower is better)", "RMSE of the predicted probability")
+```
+
+#### Ds
+```{r}
+metric_hist("Ds", "Ds-criterion for beta_1\n(higher is better)", "log det of the Schur complement", loc_legend="topright")
+```
+
+#### I
+```{r}
+metric_hist("I", "I-criterion: average prediction variance\n(lower is better)", "tr(M^-1 B)", loc_legend = "topright")
+```
+:::
+
+```{r}
+#| label: applied-table
+res_tab <- rbind("Random (median)" = apply(rand_res, 2, median), strat_res)
+knitr::kable(
+  res_tab[, c("I", "sd_pred", "rmse", "sd_b0", "sd_b1", "sd_b2", "Ds")],
+  digits = 4,
+  col.names = c("I (mean pred. variance)", "SD of predictions", "RMSE",
+                "SD beta_0", "SD beta_1", "SD beta_2", "Ds (beta_1)"))
+```
+
+## How to read the result
+
+(Numbers below come from the run with `set.seed(2026)`; a different seed changes the details but not the picture.)
+
+- **Greedy Ds wins on what it optimises.** It sits clearly to the right of the cloud of random designs on the Ds panel, and (it is the same information on another scale, since $\mathrm{SD}(\hat\beta_1) = \exp(-\Phi_{D_s}/2)$) clearly to the left on the SD of $\beta_1$ panel. It does so by placing sites at both ends of the gradient (the far west and the far east edges of the square), where $x_1$ is extreme, and at varied north-south positions so that $x_1$ varies independently of $x_2$, while the probability of presence is not so close to 0 or 1 that a site becomes uninformative. It is not the best design for prediction: the Ds-criterion ignores the precision of the nuisance parameters. Concentrating the sites on the extremes of $x_1$ leaves the other directions of the parameter space poorly determined (look at SD $\beta_2$ in the table), and predictions in the middle of the square rely on them. In our prototype runs, greedy Ds had an equal or higher SD of predictions and RMSE than random designs.
+- **Greedy I wins on what it optimises.** Its average prediction variance (about 0.0025) is clearly below the cloud of random designs (median about 0.0032): none of the 200 random designs reaches it. It is also the best of the five strategies on the SD of predictions and on the RMSE. The RMSE gap with random designs is smaller than the gap on the criterion (about 0.049 against 0.052), and some random designs do better by chance: the RMSE is a simulation which also contains the noise of the data and the bias of the fit, and the random designs are only simulated 20 times each. Where it puts the sites: along the north and south edges of the square and at the western and eastern ends, i.e. where the covariates are extreme. These are the places where predictions are the most uncertain (high leverage), and where an observation constrains the whole fitted plane, while the middle of the square is already covered by the existing clusters.
+- **Max uncertainty comes second on the I-criterion** (about 0.0028) and shares almost half of its sites with greedy I. But it piles up its 100 sites in two groups (north edge and south-east), because the sites that are the most uncertain *now* are all similar and are selected in the same batch: they are redundant with each other, and the western end of the gradient is left alone. The I-criterion sees this redundancy (the variance reduction of a site shrinks once similar ones are added), the plain uncertainty ranking does not. Its SD of $\beta_1$ is worse than that of a random design.
+- **Greedy Ds is the worst design for prediction.** It is the best on Ds and on the SD of $\beta_1$ (by construction), but it concentrates all its sites in two opposite corners (north-west and south-east), where $x_1$ is extreme and $x_2$ varies independently of it. This leaves $\beta_2$ poorly determined (look at SD $\beta_2$), and the predictions suffer from it: its I-criterion and its RMSE are the highest of the five strategies, above the random designs. *The best design for inference is not the best design for prediction.*
+- **Gap-filling** spreads sites evenly in geographic space, which is not what the criterion rewards. It stays close to the random cloud on all metrics.
+- **No spatial random effect here.** Space only matters through $x_1$ and $x_2$, and prediction variance only counts the uncertainty on $\beta$. With a spatial random effect, closeness between sites would additionally reduce their information, and the uncertainty of the random effect at the predicted sites would become part of the prediction variance.
+
+# Practical guidance
+- **Choosing the subset.** List the coefficients you must estimate precisely (e.g. actionable covariates). Include their interactions or polynomial terms if any: they form one block. The intercept and the covariates you cannot act on are the nuisance parameters.
+- **Choosing the design space.** The I-criterion is only as good as the region it averages over. Use the region where the model will be used (for BIODICAPT: a sample of France's pixels, or the test sites), not necessarily the candidates. Giving more weight to some parts of the region (e.g. agricultural land) simply means weighting the terms of $B$.
+- **Weighting species.** Use equal weights, or weights proportional to conservation importance; or restrict the criterion to the species of interest.
+- **Sequential design.** Select in a few batches and refit between them to update $\hat\beta$, $\lambda$ and $\alpha$.
+- **Evaluate with the posterior.** Compare strategies with $-\log\det \widehat{\operatorname{Cov}}_{\text{post}}(\beta_S)$ in addition to predictive metrics: *a design that is best for prediction (I-optimal) is not necessarily best for inference (Ds-optimal).*
+- **Cost.** All candidates are scored with a few matrix products ($p\times p$ matrices), so greedy I-optimality is cheap compared to refitting the model.

@@ -24,13 +24,9 @@ suppressPackageStartupMessages(source(here::here(file.path("R", "utils_simul.R")
 
 ##### Parameters ##### --------------------------------------------------------
 source(here::here(file.path("data","config","config.R"))) # Global parameters
+set.seed(42) # reproducibility 
 
-REMOVE_LAYERS_FROM_MASTER <- c("CLC", "distance to NODATA")
-CORRELATED_LAYERS_IN_MASTER <- list(  # keep first name for each vector in list
-    c("CHELSA_tas", "Elevation")
-) 
 SHOW_SP <- 5 # picks this number of species in simulations to show their maps
-
 
 if (authorise_overwrite(SIMULATE_PATH)) {
     unlink(SIMULATE_PATH, recursive = TRUE)
@@ -76,24 +72,16 @@ plot_virtualspecies_rasters <- function() {
 ##### Load datasets ##### -----------------------------------------------------
 cli_alert_info("Loading datasets...")
 # environmental data for virtual species (downsampled version)
-envs_raster_subres <- get_master_raster(
-    mode = "res",
-    rm.lyr = REMOVE_LAYERS_FROM_MASTER, 
-    rm.cor.lyr = CORRELATED_LAYERS_IN_MASTER)
-for (lyr in setdiff(names(envs_raster_subres), X_VARIABLES)) {
-    envs_raster_subres <- subset(
-        envs_raster_subres, 
-        names(envs_raster_subres)[names(envs_raster_subres) != lyr])
-}
-
+envs_t_raster_subres <- get_master_t_rasters(
+    mode = "res", keep.lyr = X_VARIABLES)
 
 # species + environmental dataset (a sort of biased "ground truth")
-stoc_df <- fix_names(vect(STOC_OBS_FULL))
+stoc_df <- fix_names(vect(STOC_OBS_TRF))
 
 # Other data precomputed in data-analysis
 env_pca <- readRDS(file.path(EXPLORE_PATH, "pca_data.rds"))
 stoc_occurences <- read_csv(
-    file.path(EXPLORE_PATH, "stoc_occurences_in_full_dataset.csv"),
+    file.path(EXPLORE_PATH, "rank-occurence_stoc.csv"),
     show_col_types = FALSE)
 
 cli_alert_success("Datasets loaded!\n\n")
@@ -106,10 +94,10 @@ cli_alert_info("Simulation of species distributions...")
 #       - This function does all the work for us, we just need to specify
 #           species.prevalence to mimic our observed species prevalence
 simulations <- simulate_from_PCA(
-    raster_stack = envs_raster_subres, 
+    raster_stack = envs_t_raster_subres, 
     precomputed_pca = env_pca, 
     n_sp = length(NAMES_SPECIES), 
-    prevalences = stoc_occurences$frequency)
+    prevalences = stoc_occurences$freq_occurrence)
 
 # Saving dont forget to wrap any SpatRaster objects inside the list)
 saveRDS(
@@ -132,7 +120,8 @@ for (k in 1:K_FOLDS) {
 
     }
 
-    stoc_simulations[[k]] <- local_simul_obs_df[paste0("sp_", seq(1:length(NAMES_SPECIES)))]
+    stoc_simulations[[k]] <- local_simul_obs_df[
+        paste0("sp_", seq(1:length(NAMES_SPECIES)))]
 }
 
 sim_rank_occurence_plot <- rank_occurence_curves(

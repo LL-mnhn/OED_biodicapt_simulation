@@ -37,15 +37,18 @@ source(here::here("R/utils_data.R"))  # needs get_metropolitan_france_shapefile
 #   - light: a boolean.
 #       If TRUE (default is FALSE) when with_palette is TRUE,
 #       uses the same color palette for color and fill values.
+#   - is_map: a boolean.
+#       If TRUE, drops the fixed aspect ratio (default is FALSE).
 # RETURNS:
 #   - figure, with customized theme and colors.
-my_custom_ggplot_theme <- function(figure, with_palette=TRUE, light=FALSE){
+my_custom_ggplot_theme <- function(
+    figure, with_palette=TRUE, light=FALSE, is_map=FALSE){
     customised_fig <- figure +
         theme_linedraw(
             base_family = FONT
         ) +
         theme(
-            aspect.ratio = 1,
+            aspect.ratio = if (is_map) NULL else 1,
             
             # title and subtitle styling
             plot.title.position = "plot",
@@ -176,7 +179,7 @@ abbreviate_labels <- function(x) {
 # ARGS:
 #   - borders_type: a string. Either "national" (default) or "regional". 
 #       If "regional", draws highest level inner borders ofthe country.
-#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - a ggplot figure
 ggplot_get_france_base_map <- function(
@@ -202,10 +205,11 @@ ggplot_get_france_base_map <- function(
             y = "latitude"
         ) +
         coord_sf(
+            crs = PROJECT_CRS,              # CRS the map is drawn in
             xlim = c(lon_min, lon_max), 
             ylim = c(lat_min, lat_max))
     
-    return(my_custom_ggplot_theme(base_map, with_palette=FALSE))
+    return(my_custom_ggplot_theme(base_map, with_palette=FALSE, is_map = TRUE))
 }
 
 # A function to create a ggplot that shows a shapefile of categorical values 
@@ -215,6 +219,7 @@ ggplot_get_france_base_map <- function(
 #   - shapefile: a shapefile.
 #   - layer_name: a string. The name of the layer containing the values to show.
 #   - color_df: a dataframe. Contains columns "Value", "hex" 
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - a ggplot figure
 ggplot_categorical_shapefile_on_background_map <- function(
@@ -222,7 +227,9 @@ ggplot_categorical_shapefile_on_background_map <- function(
         shapefile,
         layer_name,
         color_df,
-        label_layer_name = "NEW_LABEL3"
+        label_layer_name = "NEW_LABEL3",
+        lon_min = LON_MIN, lon_max = LON_MAX, 
+        lat_min = LAT_MIN, lat_max = LAT_MAX
     ) {
 
     shapefile[[layer_name]] <- as.factor(shapefile[[layer_name]])
@@ -249,11 +256,13 @@ ggplot_categorical_shapefile_on_background_map <- function(
             y = "latitude", 
             fill = "Land Cover", color = "Land Cover") +
         coord_sf(
-            xlim = c(LON_MIN, LON_MAX), 
-            ylim = c(LAT_MIN, LAT_MAX))
+            crs = PROJECT_CRS,              # CRS the map is drawn in
+            xlim = c(lon_min, lon_max), 
+            ylim = c(lat_min, lat_max))
     )
     
-    return(my_custom_ggplot_theme(map_category_grid, with_palette = FALSE))
+    return(my_custom_ggplot_theme(
+        map_category_grid, with_palette = FALSE, is_map = TRUE))
 }
 
 # A function to create a ggplot that shows a shapefile of continuous values on a map
@@ -307,22 +316,24 @@ ggplot_quantitative_shapefile_on_background_map <- function(
             limits = c(low = low_limit, high = high_limit)) +
         labs(x = "longitude", y = "latitude", fill = unit, color = unit) +
         coord_sf(
+            crs = PROJECT_CRS,
             xlim = c(LON_MIN, LON_MAX), 
             ylim = c(LAT_MIN, LAT_MAX))
     )
 
-    return(my_custom_ggplot_theme(map_quantity_grid, with_palette = FALSE))
+    return(my_custom_ggplot_theme(
+        map_quantity_grid, with_palette = FALSE, is_map = TRUE))
 }
 
 # A function to create a ggplot that shows scattered locations on a map
 # ARGS:
 #   - background_map: a ggplot object. The background map that will be used.
 #   - df: a dataframe.
-#   - lon_c: a string. The name of the column with longitude values.
-#   - lat_c: a string. The name of the column with latitude values.
+#   - lon_c: a string. The name of the column with longitude values (EPSG:4326).
+#   - lat_c: a string. The name of the column with latitude values (EPSG:4326).
 #   - column: a string (optional). The name of a column with categorical values.
 #   - col, size, shape, stroke : default markers for ggplot.
-#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
 # RETURNS:
 #   - a ggplot figure
 ggplot_categorical_df_on_background_map <- function(
@@ -335,8 +346,19 @@ ggplot_categorical_df_on_background_map <- function(
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
-       
-    # make sure that coordinates are in the right coordinates system
+    
+    # Check that the dataframe is in EPSG:4326 coordinates (approx.)
+    if (!(all(FRANCE_BBOX_4326["xmin"] <= as.data.frame(df[lon_c])) &
+        all(as.data.frame(df[lon_c]) <= FRANCE_BBOX_4326["xmax"])   &
+        all(FRANCE_BBOX_4326["ymin"] <= as.data.frame(df[lat_c]))   &
+        all(as.data.frame(df[lat_c]) <= FRANCE_BBOX_4326["ymax"])    
+    )) {
+        stop(paste0(
+            "ggplot_categorical_df_on_background_map() assumes that your data ",
+            "is in EPSG:4326 over France's extent. It looks like 'df' is in ",
+            "another CRS, or on a different area. Please check your data."
+        ))
+    }
     data <- st_as_sf(df, coords = c(lon_c, lat_c), crs = 4326)
     
     # shuffle to avoid biased overlaps
@@ -372,11 +394,13 @@ ggplot_categorical_df_on_background_map <- function(
                     size = legend_title
                 ) +
                 coord_sf(
-                    xlim = c(LON_MIN, LON_MAX),
-                    ylim = c(LAT_MIN, LAT_MAX))
+                    crs = PROJECT_CRS,              # CRS the map is drawn in
+                    xlim = c(lon_min, lon_max),
+                    ylim = c(lat_min, lat_max))
             )
         }
-        return(my_custom_ggplot_theme(map_obs, with_palette = TRUE))
+        return(my_custom_ggplot_theme(
+            map_obs, with_palette = TRUE, is_map = TRUE))
         
     } else {
         # make plot
@@ -394,10 +418,12 @@ ggplot_categorical_df_on_background_map <- function(
                 y = "latitude"
             ) +
             coord_sf(
+                crs = PROJECT_CRS,              # CRS the map is drawn in
                 xlim = c(lon_min, lon_max),
                 ylim = c(lat_min, lat_max))
         )
-        return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
+        return(my_custom_ggplot_theme(
+            map_obs, with_palette = FALSE, is_map = TRUE))
     }
 }
 
@@ -405,8 +431,8 @@ ggplot_categorical_df_on_background_map <- function(
 # ARGS:
 #   - background_map: a ggplot object. The background map that will be used.
 #   - df: a dataframe.
-#   - lon_c: a string. The name of the column with longitude values.
-#   - lat_c: a string. The name of the column with latitude values.
+#   - lon_c: a string. The name of the column with longitude values (EPSG:4326).
+#   - lat_c: a string. The name of the column with latitude values (EPSG:4326).
 #   - column: a string (optional). The name of a column with categorical values.
 #   - unit: a string. A label that will be shown along the palette displayed.
 #   - limits: a vector of 2 values (optional). 
@@ -415,7 +441,7 @@ ggplot_categorical_df_on_background_map <- function(
 #       (values are rounded to closest precision_auto_limits)
 #   - cmap: a string or a custom colormap.
 #   - col, size, shape, stroke : default markers for ggplot.
-#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in EPSG:4326).
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS6).
 # RETURNS:
 #   - a ggplot figure
 ggplot_quantitative_df_on_background_map <- function(
@@ -432,8 +458,19 @@ ggplot_quantitative_df_on_background_map <- function(
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
-       
-    # make sure that coordinates are in the right coordinates system
+
+    # Check that the dataframe is in EPSG:4326 coordinates (approx.)
+    if (!(all(FRANCE_BBOX_4326["xmin"] <= as.data.frame(df[lon_c])) &
+        all(as.data.frame(df[lon_c]) <= FRANCE_BBOX_4326["xmax"])   &
+        all(FRANCE_BBOX_4326["ymin"] <= as.data.frame(df[lat_c]))   &
+        all(as.data.frame(df[lat_c]) <= FRANCE_BBOX_4326["ymax"])    
+    )) {
+        stop(paste0(
+            "ggplot_categorical_df_on_background_map() assumes that your data ",
+            "is in EPSG:4326 over France's extent. It looks like 'df' is in ",
+            "another CRS, or on a different area. Please check your data."
+        ))
+    }
     data <- st_as_sf(df, coords = c(lon_c, lat_c), crs = 4326)
     
     # shuffle to avoid biased overlaps
@@ -477,6 +514,7 @@ ggplot_quantitative_df_on_background_map <- function(
                 fill = unit,
                 color = unit) +
             coord_sf(
+                crs = PROJECT_CRS,              # CRS the map is drawn in
                 xlim = c(lon_min, lon_max),
                 ylim = c(lat_min, lat_max))
         )
@@ -485,7 +523,8 @@ ggplot_quantitative_df_on_background_map <- function(
             map_obs <- map_obs + facet_grid(facet_formula)
         }
 
-        return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
+        return(my_custom_ggplot_theme(
+            map_obs, with_palette = FALSE, is_map = TRUE))
         
     } else {
         # make plot
@@ -503,10 +542,12 @@ ggplot_quantitative_df_on_background_map <- function(
                 y = "latitude"
             ) +
             coord_sf(
+                crs = PROJECT_CRS,              # CRS the map is drawn in
                 xlim = c(lon_min, lon_max),
                 ylim = c(lat_min, lat_max))
         )
-        return(my_custom_ggplot_theme(map_obs, with_palette = FALSE))
+        return(my_custom_ggplot_theme(
+            map_obs, with_palette = FALSE, is_map = TRUE))
     }
 }
 
@@ -708,6 +749,10 @@ compare_plot <- function(
         x_col <- x_var
     }
 
+    if (!is.null(panel_var) && !is.null(panel_order)) {
+        diffs_df <- diffs_df |> filter(.data[[panel_var]] %in% panel_order)
+    }
+
     # dummy fill so the boxplot still has a single group to colour
     if (is.null(fill_var)) {
         diffs_df$.fill <- factor("all")
@@ -886,4 +931,142 @@ count_improving <- function(
     #         .groups = "drop"
     #     )
 
+}
+
+# A function to compare strategies against the distribution of random designs.
+# Mirrors the "metric_hist" figures of the optimality example: the histogram
+# shows the metric over random-sampling runs, vertical lines show the other
+# strategies, and (optionally) a dashed black line shows the reference model.
+# ARGS:
+#   - scores: a data.frame or tibble (e.g. compare_df).
+#       Must contain columns: name, score, k, strat_var, size_var, panel_var.
+#   - metric: a string. The name of a category in column "name".
+#   - ref_scores: a data.frame or tibble (e.g. ref_df). Default NULL.
+#       When given, its mean (per panel_var) is drawn as a dashed black line.
+#   - random_strategy: a string. The value of strat_var forming the histogram.
+#   - strat_var: a string. Column holding the strategies.
+#   - strat_order: a vector of strings. Order of the strategies in the legend.
+#   - size_var: a string. Column giving the number of new samples (rows of the grid).
+#   - panel_var: a string. Column giving the subset (columns of the grid).
+#   - panel_order: a vector of strings. Order of the panels.
+#   - summary_fun: a function used to summarise a non-random strategy across
+#       folds into one line (default: mean).
+#   - lower_is_better: a boolean. Default NULL (FALSE for Ds, TRUE otherwise).
+#   - bins: number of histogram bins.
+#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
+distribution_plot <- function(
+        scores, metric, ref_scores = NULL,
+        random_strategy = "random-sampling",
+        strat_var = "STRATEGIES", strat_order = NULL,
+        size_var = "NEW_SAMPLE_SIZES",
+        panel_var = "subset", panel_order = NULL,
+        summary_fun = mean,
+        lower_is_better = NULL,
+        bins = 20,
+        save_to = NULL) {
+
+    if (is.null(lower_is_better)) lower_is_better <- !grepl("Ds", metric)
+
+    # 1. Species-averaged score for each fold, strategy, size and panel
+    keys <- c(panel_var, size_var, strat_var)
+    fold_df <- scores |>
+        filter(name == metric) |>
+        group_by(across(all_of(c("k", keys)))) |>
+        summarise(score = mean(score, na.rm = TRUE), .groups = "drop")
+
+    if (!is.null(panel_order)) {
+        fold_df <- fold_df |> filter(.data[[panel_var]] %in% panel_order)
+    }
+
+    # 2. Random cloud (histogram) and strategy summaries (vertical lines)
+    rand_df <- fold_df |> filter(.data[[strat_var]] == random_strategy)
+    line_df <- fold_df |>
+        filter(.data[[strat_var]] != random_strategy) |>
+        group_by(across(all_of(keys))) |>
+        summarise(score = summary_fun(score, na.rm = TRUE), .groups = "drop")
+
+    if (nrow(rand_df) == 0) {
+        stop("No rows for random_strategy '", random_strategy, "' in `scores`.")
+    }
+
+    # 3. Reference line: no size_var column, so it is repeated in every row
+    ref_line <- NULL
+    if (!is.null(ref_scores)) {
+        ref_line <- ref_scores |>
+            filter(name == metric) |>
+            group_by(across(all_of(c("k", panel_var)))) |>
+            summarise(score = mean(score, na.rm = TRUE), .groups = "drop") |>
+            group_by(across(all_of(panel_var))) |>
+            summarise(score = summary_fun(score, na.rm = TRUE), .groups = "drop")
+        if (!is.null(panel_order)) {
+            ref_line <- ref_line |> filter(.data[[panel_var]] %in% panel_order)
+        }
+    }
+
+    # 4. Factor ordering
+    lvls <- if (is.null(strat_order)) {
+        sort(unique(line_df[[strat_var]]))
+    } else {
+        intersect(strat_order, unique(line_df[[strat_var]]))
+    }
+    line_df[[strat_var]] <- factor(line_df[[strat_var]], levels = lvls)
+    
+    set_panels <- function(df) {
+        if (is.null(df)) return(df)
+        df[[panel_var]] <- if (is.null(panel_order)) {
+            factor(df[[panel_var]])
+        } else {
+            factor(df[[panel_var]], levels = panel_order)
+        }
+        df
+    }
+    rand_df  <- set_panels(rand_df)
+    line_df  <- set_panels(line_df)
+    ref_line <- set_panels(ref_line)
+
+    # 5. Plot
+    n_strat <- length(lvls)
+    p <- ggplot() +
+        geom_histogram(
+            data = rand_df, aes(x = score),
+            bins = bins, fill = "grey85", colour = "white") +
+        geom_vline(
+            data = line_df,
+            aes(xintercept = score, colour = .data[[strat_var]],
+                linetype = .data[[strat_var]]),
+            linewidth = 0.9)
+
+    if (!is.null(ref_line)) {
+        p <- p + geom_vline(
+            data = ref_line, aes(xintercept = score),
+            colour = "black", linetype = "dashed", linewidth = 0.7)
+    }
+
+    p <- p +
+        facet_grid(
+            rows = vars(.data[[size_var]]),
+            cols = vars(.data[[panel_var]]),
+            scales = "free",
+            labeller = labeller(.rows = label_both)) +
+        labs(
+            title = metric,
+            subtitle = paste0(
+                "(", if (lower_is_better) "lower" else "higher", " is better)"),
+            x = paste0("Mean ", metric, " per fold"),
+            y = paste0("# of '", random_strategy, "' runs"),
+            colour = "Strategy", linetype = "Strategy",
+            caption = paste0(
+                "Grey histogram: '", random_strategy, "' runs ",
+                "(species-averaged, one value per k_fold).\n",
+                "Lines: other strategies (across-fold summary)",
+                if (!is.null(ref_line)) "; dashed black: reference model" else "",
+                "."))
+
+    p <- my_custom_ggplot_theme(p) +
+        scale_colour_manual(values = PALETTE[seq_len(n_strat)]) +
+        scale_linetype_manual(values = rep_len(c(1, 2, 3, 4, 5, 6), n_strat))
+
+    if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
+    list(data = list(random = rand_df, lines = line_df, reference = ref_line),
+         plot = p)
 }

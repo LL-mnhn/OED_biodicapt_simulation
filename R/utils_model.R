@@ -4,6 +4,7 @@ library(sf)
 library(cli)
 library(coda)
 library(Hmsc)
+library(abind)
 library(tidyr)
 library(dplyr)
 library(abind)
@@ -17,6 +18,37 @@ source(here::here("data/config/config.R")) # Import global parameters
 
 
 ##### Data ##### --------------------------------------------------------------
+# A function that converts the "lon" / "lat" columns of a dataframe (WGS84 
+# degrees, EPSG:4326) to metric coordinates (PROJECT_CRS).
+# ARGS:
+#   - df: a dataframe with columns lon_c, lat_c and id_column.
+#   - id_column: a string. The column with unique id of the points.
+#   - lon_c, lat_c: strings. The names of the longitude/latitude columns.
+# RETURNS:
+#   - a matrix (n points x 2) of coordinates in meters.
+lonlat_to_grid_xy <- function(
+    df, id_column = "row_id", lon_c = "lon", lat_c = "lat") {
+    # Check that the dataframe is in EPSG:4326 coordinates (approx.)
+    if (!(all(FRANCE_BBOX_4326["xmin"] <= as.data.frame(df[lon_c])) &
+        all(as.data.frame(df[lon_c]) <= FRANCE_BBOX_4326["xmax"])   &
+        all(FRANCE_BBOX_4326["ymin"] <= as.data.frame(df[lat_c]))   &
+        all(as.data.frame(df[lat_c]) <= FRANCE_BBOX_4326["ymax"])    
+    )) {
+        stop(paste0(
+            "lonlat_to_grid_xy() assumes that your data ",
+            "is in EPSG:4326 over France's extent. It looks like 'df' is in ",
+            "another CRS, or on a different area. Please check your data."
+        ))
+    }
+    
+    xy <- st_coordinates(st_transform(
+        st_as_sf(as.data.frame(df), coords = c(lon_c, lat_c), crs = 4326), 
+        PROJECT_CRS))
+    rownames(xy) <- as.character(df[[id_column]])
+    colnames(xy) <- paste0(c("longitude_grid_", "latitude_grid_"), PROJECT_CRS_TAG)
+    return(xy)
+}
+
 # A function to turn a list of lists into a dataframe with combinations as rows.
 # ARGS:
 #   - combinations: a list of lists.
@@ -46,14 +78,13 @@ build_param_grid <- function(combinations) {
 #   - k_fold: the k_fold ID.
 # RETURNS:
 #   - a folder path.
-make_run_path <- function(folder, params, k_fold){
+make_run_path <- function(folder, params, k_fold) {
     row_string <- tolower(
         paste(names(params), unlist(params), sep = "-", collapse = "_")
     )
     
-    return(file.path(folder, paste0("model_", row_string, "_", k)))
+    return(file.path(folder, paste0("model_", row_string, "_k", k_fold)))
 }
-
 
 # A function to automatise verbose interpretation of diagnostic vectors.
 # ARGS:
@@ -158,6 +189,7 @@ interpret_diagnostics <- function(
 
 }
 
+
 ##### HMSC ##### --------------------------------------------------------------
 # A function to prepare dataset for Hmsc training, outputs a model template
 # ARGS:
@@ -165,9 +197,7 @@ interpret_diagnostics <- function(
 #   - x_cols: a list of strings. The columns containing explanatory variables.
 #   - y_cols: a list of strings. The columns containing species occurrences.
 #   - formula: a formula for the Hmsc model. Based on names in x_cols/y_cols.
-#   - random_effect: whether to add 
-#       a random effect to Hmsc ("points", "carres" or "spatial") 
-#       or not ("none", default).
+#   - random_effect: adds a random effect to Hmsc (default is "none").
 # RETURNS:
 #   - the initialised HMSC object.
 prepare_hmsc_training <- function(
@@ -182,9 +212,6 @@ prepare_hmsc_training <- function(
         lapply(x_cols, function(col) subdataset[[col]]),
         x_cols)
     )
-    studyDesign <- data.frame(
-        spatial = as.factor(subdataset[[id_column]])
-    )
 
     # Depending on the random effect, the model has to be set up differently
     # FYI: here, we use occurence data. For that, a "probit" distribution is
@@ -196,24 +223,38 @@ prepare_hmsc_training <- function(
             Y = ydata, XData = xdata, 
             XFormula = formula, 
             distr = "probit",           
-            studyDesign = studyDesign)
-        
-    }  else if (random_effect == "spatial") {
-        # Random effect as "spatial": we consider the coordinates of each point
-        # sampled. The random effect is a function of the distance between the
-        # points. Takes more time to compute but (usually), yields to better 
-        # results in prediction.
-        # convert coordinates to metric
-        coords_sf <- st_as_sf(
-            subdataset, 
-            coords = c("lon", "lat"), 
-            crs = 4326)
-        coords_proj <- st_transform(coords_sf, crs = 2154)
+            studyDesign = NULL)
+    
+    } else if (random_effect == "site") {
+        # Random effect as a "site" effect:
+        #   An unstructured sample-unit effect with no direct spatial structure, 
+        #   it only captures residual species associations.
+        if (anyDuplicated(subdataset[[id_column]])) {
+            stop("id_column must be unique per point for a site-level random effect.")
+        }
+        studyDesign <- data.frame(site = as.factor(subdataset[[id_column]]))
 
-        # associate coordinate to the name of each sampled point
-        xy <- st_coordinates(coords_proj)
-        rownames(xy) <- as.character(subdataset[[id_column]])
-        colnames(xy) <- c("longitude_grid_2154", "latitude_grid_2154")
+        rL.site <- HmscRandomLevel(units = levels(studyDesign$site))
+        rL.site <- setPriors(rL.site, nfMin = 1,  nfMax = 2)
+
+        hmsc_object <- Hmsc(
+            Y = ydata, XData = xdata,
+            XFormula = formula,
+            ranLevels = list(site = rL.site),
+            distr = "probit",
+            studyDesign = studyDesign)        
+        
+    } else if (random_effect == "spatial") {
+        # Random effect as a "spatial" effect:
+        #   The random effect is a function of the distance between the
+        #   points. Takes more time to compute but (usually), yields to better 
+        #   results in prediction.
+
+        studyDesign <- data.frame(spatial = as.factor(subdataset[[id_column]]))
+
+        # convert coordinates (lon/lat in degrees from obs are in EPSG 4326) 
+        # to metric coordinates (PROJECT_CRS)
+        xy <- lonlat_to_grid_xy(subdataset, id_column = id_column)
 
         # There should be one observation per point (because i_point_annee)
         # but we must make sure or else Hmsc will fail.
@@ -232,7 +273,7 @@ prepare_hmsc_training <- function(
                 sData = xy, sMethod = "NNGP", nNeighbours = 10)
         }
         rL.spatial = setPriors(
-            rL.spatial, nfMin =1,  nfMax = 1) # limit number of latent variables
+            rL.spatial, nfMin =1,  nfMax = 2) # limit number of latent variables
 
         hmsc_object <- Hmsc(
             Y = ydata, XData = xdata, 
@@ -243,7 +284,7 @@ prepare_hmsc_training <- function(
 
     } else {
         stop(paste0(
-            "Random effect must be one of 'none', 'spatial'. Got ", 
+            "Random effect must be one of 'none', 'site' or 'spatial'. Got ", 
             random_effect))
     }
 
@@ -328,13 +369,17 @@ predict_hmsc <- function(hM, df, x_variables, id_column = "row_id") {
         lapply(x_variables, function(col) df[[col]]),
         x_variables))
 
-    if ("spatial" %in% names(hM$ranLevels)) {
-        # Format coordinates associated to each point
-        coords_sf <- st_as_sf(df, coords = c("lon", "lat"), crs = 4326)
-        coords_proj <- st_transform(coords_sf, crs = 2154)
-        xy_new <- st_coordinates(coords_proj)
-        rownames(xy_new) <- as.character(df[[id_column]])
-        colnames(xy_new) <- c("longitude_grid_2154", "latitude_grid_2154")
+    if ("site" %in% names(hM$ranLevels)) {
+        studyDesign <- data.frame(id = as.factor(df[[id_column]]))
+        names(studyDesign) <- names(hM$ranLevels)
+
+        return(predict(
+            hM, XData = XData, studyDesign = studyDesign, expected = TRUE))
+        
+    } else if ("spatial" %in% names(hM$ranLevels)) {
+        # convert coordinates (lon/lat in degrees from obs are in EPSG 4326) 
+        # to metric coordinates (PROJECT_CRS)
+        xy_new <- lonlat_to_grid_xy(df, id_column = id_column)
 
         # Use Gradient (instead of studyDesign), for spatial gradients
         Gradient <- prepareGradient(
@@ -347,14 +392,9 @@ predict_hmsc <- function(hM, df, x_variables, id_column = "row_id") {
         return(predict(hM, Gradient = Gradient, expected = TRUE))
 
     } else {
-        # Format study design (grouping of samples together)
-        studyDesign <- data.frame(
-            spatial = as.factor(df[[id_column]])
-        )
-
-        # Make prediction on new dataset
+        # No random effect or unknow, make predictions without design
         return(predict(
-            hM, XData = XData, studyDesign = studyDesign, expected = TRUE))
+            hM, XData = XData, studyDesign = NULL, expected = TRUE))
     }
 }
 
@@ -380,6 +420,32 @@ get_uncertainty_hmsc <- function(hM, df, x_cols, id_column = "row_id") {
         mutate(average_sd = rowMeans(across(everything())))
     
     return(uncertainty_per_point$average_sd)
+}
+
+# A function that computes the autocorrelation of every variable of an MCMC
+# object at ONE lag, averaged over chains. It gives the same values as 
+# coda::autocorr.diag(chains, lags = lag), but much faster.
+# ARGS:
+#   - chains: a coda mcmc.list (or mcmc) object.
+#   - lag: an integer. The lag, in number of recorded samples (not iterations).
+# RETURNS:
+#   - a named numeric vector, one autocorrelation per variable.
+autocorr_at_lag <- function(chains, lag) {
+    if (abs(lag - round(lag)) > 1e-8) {
+        warning("Lag (", lag, ") is not a whole number of samples: rounded.")
+    }
+    lag <- round(lag)
+    chains <- coda::as.mcmc.list(chains)
+
+    per_chain <- lapply(chains, function(chain) {
+        x <- as.matrix(chain)
+        n <- nrow(x)
+        if (lag >= n) stop("Lag (", lag, ") must be smaller than the number of samples (", n, ").")
+        x <- sweep(x, 2, colMeans(x), "-")
+        colSums(x[seq_len(n - lag), , drop = FALSE] * x[(lag + 1):n, , drop = FALSE]) / 
+            colSums(x^2)
+    })
+    Reduce(`+`, per_chain) / length(per_chain)
 }
 
 # A function to display convergence diagnostics for a Hmsc model.
@@ -470,7 +536,7 @@ convergence_hmsc <- function(hM, nchains, thin, save_folder) {
                         fill = PALETTE[2], alpha = 0.5),
                     captions = labs(caption = "Green: good, Orange: acceptable, Red: bad."))
                 )
-        print(eff_size_plot)
+        # print(eff_size_plot)
         interpret_diagnostics(
             eff_size, bad = 100, good = 400, order = "high_better", mode = "quick")
         standardised_ggplot_save(
@@ -498,7 +564,7 @@ convergence_hmsc <- function(hM, nchains, thin, save_folder) {
                         fill = PALETTE[1], alpha = 0.5),
                     captions = labs(caption = "Green: good, Orange: acceptable, Red: bad."))
                 )
-            print(psrf_plot)
+            # print(psrf_plot)
             interpret_diagnostics(psrf, bad=1.1, good=1.05, mode = "quick")
             standardised_ggplot_save(
                 figure = psrf_plot, 
@@ -518,8 +584,7 @@ convergence_hmsc <- function(hM, nchains, thin, save_folder) {
             ## Autocorrelation
             cli_alert_info("-> Autocorrelation:")
             for (lag in c(50)) {
-                autocorr_estimates <- autocorr.diag(
-                    chains, lags=c(lag/thin))
+                autocorr_estimates <- autocorr_at_lag(chains, lag = lag / thin)
                 cli_alert_info(paste0("[Lag ", lag, "]:"))
                 interpret_diagnostics(autocorr_estimates, good=0.1, mode = "quick")
             }
@@ -592,7 +657,7 @@ evaluateModelFitCustom <- function(hM, Y, predY) {
     sdPredY <- apply(predY, c(1, 2), sd) # sd prediction per obs/species
 
 
-    # Initialise metrics to compute
+    # metrics on predictions
     RMSE <- rep(NA, ns)     # RMSE (the lower the better)
     AUC <- rep(NA, ns)      # AUC (the closer to 1, the better)
     TjurR2 <- rep(NA, ns)   # Tjur R² (% of variance explained)
@@ -603,29 +668,128 @@ evaluateModelFitCustom <- function(hM, Y, predY) {
         sel <- !is.na(Y[, j])      # extract observations/species
         obs <- Y[sel, j]           # get observed value
         pred <- mPredY[sel, j]     # get predicted value
-        predSD <- sdPredY[sel, j]  # get predicted sd
 
         # compute RMSE / MSE
-        RMSE[j] <- sqrt(mean((obs - pred)^2))
-        
+        RMSE[j] <- sqrt(mean((obs - pred)^2))       
 
         # compute variance (only obs needed)
-        SD[j] <- mean(predSD)
+        SD[j] <- mean(sdPredY[sel, j])
 
-        # compute AUC (only meaningful if both 0s and 1s present)
+        # If presence and absence data:
+        #   - compute AUC
+        #   - compute TjurR2: difference in mean predicted probability between
+        #                     presences and absences
         if (length(unique(obs)) == 2) {
             AUC[j] <- as.numeric(pROC::auc(obs, pred, quiet = TRUE))
-        }
-
-        # compute Tjur R2: difference in mean predicted probability between
-        # presences and absences
-        if (length(unique(obs)) == 2) {
             TjurR2[j] <- mean(pred[obs == 1]) - mean(pred[obs == 0])
         }
     }
 
     names(RMSE) <- names(SD) <- names(AUC) <- names(TjurR2) <- colnames(Y)
-    return(list(RMSE = RMSE, AUC = AUC, TjurR2 = TjurR2, SD = SD))
+    list(RMSE = RMSE, AUC = AUC, TjurR2 = TjurR2, SD = SD)
+}
+
+# A function that extracts the posterior draws of Beta from a Hmsc model and
+# puts them, together with the design matrix, on a standardised scale of X
+# (mean 0 and sd 1 for each covariate, as seen by the model at fitting time).
+# By defaylt, Hmsc returns Beta on the ORIGINAL scale of X.
+# ARGS:
+#   - hM: a fitted Hmsc object.
+#   - x_cols: a vector of strings, the names of the explanatory variables.
+#   - scaling_data: a dataframe with columns x_cols, or NULL (default). The 
+#       means and SDs used to standardise X are computed on this dataset. When 
+#       NULL, the training data of the model are used. Use a COMMON dataset to
+#       compare models trained on different sites: the value of Ds, for 
+#       example, shifts by a constant that depends on the scaling used.
+# RETURNS: a list
+#   - beta_std: array (p x n_species x n_draws) of posterior draws.
+#   - standardise: function turning a dataframe (with columns x_cols) into a
+#       standardised design matrix (n sites x p).
+#   - post: the pooled posterior samples (see Hmsc::poolMcmcChains).
+get_standardised_posterior <- function(hM, x_cols, scaling_data = NULL) {
+    post <- Hmsc::poolMcmcChains(hM$postList)
+    beta_orig <- simplify2array(lapply(post, function(s) s$Beta))
+    p <- dim(beta_orig)[1]
+    n_draws <- dim(beta_orig)[3]
+    if (n_draws <= p) {
+        stop("Not enough posterior samples (", n_draws, ") to estimate a ", 
+             p, " x ", p, " posterior covariance.")
+    }
+
+    # Centering / scaling of X (from the training data of the model)
+    i_int <- which(hM$covNames == "(Intercept)")
+    X_scaling <- if (is.null(scaling_data)) {
+        hM$X
+    } else {
+        model.matrix(hM$XFormula, data = as.data.frame(scaling_data[x_cols]))
+    }
+    mu <- colMeans(X_scaling)
+    sdv <- apply(X_scaling, 2, sd)
+    mu[i_int] <- 0
+    sdv[i_int] <- 1
+    sdv[sdv == 0] <- 1
+    standardise <- function(df) {
+        X <- model.matrix(hM$XFormula, data = as.data.frame(df[x_cols]))
+        stopifnot(identical(colnames(X), hM$covNames))
+        sweep(sweep(X, 2, mu, "-"), 2, sdv, "/")
+    }
+
+    beta_std <- beta_orig * sdv        # recycled along the first dimension
+    beta_std[i_int, , ] <- beta_orig[i_int, , ] + 
+        apply(beta_orig[-i_int, , , drop = FALSE] * mu[-i_int], c(2, 3), sum)
+
+    list(beta_std = beta_std, standardise = standardise, post = post)
+}
+
+# A function that measures, for each species, how precisely a fitted Hmsc 
+# model knows its parameters and its predictions. All of them are computed
+# from the posterior of Beta on the standardised scale of X (see 
+# get_standardised_posterior), and are therefore comparable between models.
+# ARGS:
+#   - hM: a fitted Hmsc object.
+#   - data_set: a dataframe with columns x_cols (no NAs).
+#   - x_cols: a vector of strings, the names of the explanatory variables.
+#   - actionable: a vector of strings, the parameters of interest 
+#       (subset of x_cols).
+#   - scaling_data: see get_standardised_posterior(). Pass the same dataset for
+#       all the models you want to compare.
+# RETURNS:
+#   - a list of named vectors (one value per species).
+#       - BetaSD: mean posterior SD of all coefficients (including the intercept).
+#       - BetaSD_actionable: same, for the actionable coefficients only.
+#       - Ds: Ds-criterion on the actionable coefficients, log det of the Schur 
+#             complement of the posterior precision matrix of Beta (= minus the log 
+#             det of the posterior covariance of the actionable coefficients).
+#             The HIGHER the better. Does not depend on data_set.
+#       - I: I-criterion, average over the sites of data_set of the (delta-method)
+#            variance of the predicted probability, phi(eta)^2 x' Cov(Beta) x. 
+#            The LOWER the better.
+get_posterior_design_metrics <- function(
+        hM, data_set, x_cols, actionable, scaling_data = NULL) {
+    idx_act <- match(actionable, hM$covNames)
+    if (anyNA(idx_act)) {
+        stop("`actionable` contains variables absent from the model.")
+    }
+
+    sp <- get_standardised_posterior(hM, x_cols, scaling_data)
+    beta_std <- sp$beta_std
+    ns <- dim(beta_std)[2]
+    X <- sp$standardise(data_set)
+    eta <- X %*% apply(beta_std, c(1, 2), mean)
+
+    BetaSD <- BetaSD_actionable <- Ds <- I <- rep(NA_real_, ns)
+    for (j in seq_len(ns)) {
+        post_cov <- cov(t(beta_std[, j, ]))
+        BetaSD[j] <- mean(sqrt(diag(post_cov)))
+        BetaSD_actionable[j] <- mean(sqrt(diag(post_cov)[idx_act]))
+        Ds[j] <- -as.numeric(determinant(
+            post_cov[idx_act, idx_act, drop = FALSE], logarithm = TRUE)$modulus)
+        Xw <- X * dnorm(eta[, j])
+        I[j] <- mean(rowSums((Xw %*% post_cov) * Xw))
+    }
+    out <- list(
+        BetaSD = BetaSD, BetaSD_actionable = BetaSD_actionable, Ds = Ds, I = I)
+    lapply(out, function(v) setNames(v, hM$spNames))
 }
 
 # A function to display convergence diagnostics for a Hmsc model.
@@ -636,9 +800,16 @@ evaluateModelFitCustom <- function(hM, Y, predY) {
 #       Automatically removes rows containing NAs.
 #   - x_cols: a list of strings. The columns containing explanatory variables.
 #   - sp_cols: a list of strings. The columns containing species occurrences.
+#   - actionable: a vector of strings, the parameters of interest (subset of 
+#       x_cols), used for the "actionable" scores. 
+#   - scaling_data: a dataframe (or NULL). Dataset used to standardise X for the
+#       parameter-based scores (BetaSD, Ds, I). Use the same one for all the 
+#       models that will be compared (see get_standardised_posterior).
 # RETURNS:
-#   - a list of scores
-evaluate_hmsc_performances <- function(hM, data_set, x_cols, sp_cols) {
+#   - a list of scores (one named vector, with one value per species, per score)
+evaluate_hmsc_performances <- function(
+        hM, data_set, x_cols, sp_cols, actionable = ACTIONABLE_VARIABLES,
+        scaling_data = NULL) {
     if (inherits(data_set, "SpatVector")) {
         data_set <- as.data.frame(data_set)
     } else if (!inherits(data_set, "data.frame")) {
@@ -658,5 +829,306 @@ evaluate_hmsc_performances <- function(hM, data_set, x_cols, sp_cols) {
     local_Y <- as.matrix(data_set[sp_cols])           # actual observations
     
     # Extract metric by comparing predictions and observed values
-    evaluateModelFitCustom(hM = hM, Y = local_Y, predY = local_preds)
+    c(
+        evaluateModelFitCustom(
+            hM = hM, Y = local_Y, predY = local_preds),
+        get_posterior_design_metrics(
+            hM = hM, data_set = data_set, x_cols = x_cols, 
+            actionable = actionable, scaling_data = scaling_data)
+    )
+}
+
+# A function that extracts everything needed to score candidate sites with a 
+# Fisher-information based criterion from a HMSC model. 
+# Everything is computed on a standardised X (mean 0, sd 1 for each covariate).
+# ARGS:
+#   - hM: a fitted Hmsc object (probit model, no spatial random level).
+#   - newdata: a dataframe of candidate sites with columns listed in x_cols.
+#       Must not contain NAs in x_cols.
+#   - x_cols: a vector of strings, the names of the explanatory variables.
+# RETURNS: a list
+#   - X: matrix (n_candidates x p), standardised design matrix of candidates.
+#   - M0: array (p x p x n_species), current information matrices.
+#   - w: matrix (n_candidates x n_species), information weights.
+#   - beta_hat: matrix (p x n_species), posterior mean of Beta (standardised X).
+#   - standardise: function turning a dataframe into a standardised design 
+#       matrix (re-used for any other set of sites, e.g. the I-opt target).
+get_hmsc_information <- function(hM, newdata, x_cols) {
+    if (!inherits(hM, "Hmsc")) {
+        stop("'hM' must be a fitted Hmsc object.")
+    }
+    # Spatial random levels need the full covariance between sites: not implemented
+    for (r in seq_len(hM$nr)) {
+        if (isTRUE(hM$rL[[r]]$sDim > 0)) {
+            stop("Information-based criteria are implemented for models with no ",
+                 "random effect or non-spatial ('site') random effects only.")
+        }
+    }
+
+    # Posterior of Beta on the standardised scale of X
+    sp <- get_standardised_posterior(hM, x_cols)
+    beta_std <- sp$beta_std
+    standardise <- sp$standardise
+    p <- dim(beta_std)[1]
+    ns <- dim(beta_std)[2]
+    beta_hat <- apply(beta_std, c(1, 2), mean)
+    post <- sp$post
+
+    # Current information = posterior precision of each species' coefficients
+    M0 <- array(NA_real_, dim = c(p, p, ns))
+    for (j in seq_len(ns)) {
+        post_cov <- cov(t(beta_std[, j, ]))
+        M0[, , j] <- solve(post_cov + diag(1e-10 * mean(diag(post_cov)), p))
+    }
+
+    # Weights of candidates, attenuated by non-spatial random effects
+    X <- standardise(newdata)
+    w <- probit_weights(X %*% beta_hat)
+    g <- rep(0, ns)
+    for (r in seq_len(hM$nr)) {
+        g <- g + rowMeans(sapply(post, function(s) {
+            colSums(matrix(s$Lambda[[r]], ncol = ns)^2)
+        }), na.rm = TRUE)
+    }
+    w <- 1 / (1 / w + matrix(g, nrow(w), ns, byrow = TRUE))
+
+    list(X = X, M0 = M0, w = w, beta_hat = beta_hat, standardise = standardise)
+}
+
+# A to compute weights for a probit regression model
+# ARGS:
+#   - eta: a vector of numerics. Typically \(\eta = X\beta\), 
+#          with \(X\) the design matrix and \(\beta\) the coefficient vector.
+#   - eps: a very small positive float. used to avoid solving problems.
+# RETURNS:
+#   - a vector of weights
+probit_weights <- function(eta, eps = 1e-8) {
+    p <- pmin(pmax(pnorm(eta), eps), 1 - eps)
+    dnorm(eta)^2 / (p * (1 - p))
+}
+
+# A function that computes the matrices B_j for the I-criterion: the average, 
+# over a target set of sites, of phi(eta)^2 x x' (delta-method gradient of the 
+# predicted probability), one matrix per species.
+# ARGS:
+#   - info: the output of get_hmsc_information().
+#   - target: a dataframe of target sites (the "design space": where we want 
+#       good predictions), with the same columns as the candidates.
+# RETURNS:
+#   - an array (p x p x n_species)
+get_prediction_moments <- function(info, target) {
+    Xt <- info$standardise(target)
+    eta <- Xt %*% info$beta_hat
+    p <- ncol(Xt)
+    ns <- ncol(eta)
+    B <- array(NA_real_, dim = c(p, p, ns))
+    for (j in seq_len(ns)) {
+        Xw <- Xt * dnorm(eta[, j])
+        B[, , j] <- crossprod(Xw) / nrow(Xt)
+    }
+    B
+}
+
+# A function that *greedily* selects sites (aka selects one at a time) 
+# maximising an information criterion.
+# At each step, the exact gain of every remaining candidate is computed in 
+# closed form (Sherman-Morrison), the best one is added, and the information 
+# matrices are updated. Gains are summed over species.
+#   - Ds: gain = -log(1 - w a_S' S a_S / (1 + w x'M^-1 x)), 
+#       S = Schur complement of the parameters of interest.
+#   - I:  gain = w a' B a / (1 + w x'M^-1 x) (decrease of tr(M^-1 B)).
+#   with a = M^-1 x.
+# ARGS:
+#   - M0: array (p x p x n_species) of current information matrices.
+#   - X: matrix (n_candidates x p) of candidates' (standardised) covariates.
+#   - w: matrix (n_candidates x n_species) of information weights.
+#   - n_select: an integer. The number of sites to select.
+#   - criterion: "ds" or "i".
+#   - idx_params: (Ds only) integer positions, among the columns of X, of the 
+#       parameters of interest (all other columns are nuisance parameters).
+#   - B: (I only) array (p x p x n_species) from get_prediction_moments().
+#   - species_weights: a vector (length n_species) of weights, default is 
+#       equal weights for all species.
+# RETURNS:
+#   - the row indices (in X) of the selected candidates, in selection order.
+greedy_design <- function(
+        M0, X, w, n_select, criterion = c("ds", "i"), 
+        idx_params = NULL, B = NULL, species_weights = NULL) {
+    criterion <- match.arg(criterion)
+    ns <- dim(M0)[3]
+    if (is.null(species_weights)) species_weights <- rep(1 / ns, ns)
+    if (n_select > nrow(X)) stop("Cannot select more sites than candidates.")
+    if (criterion == "ds") {
+        if (length(idx_params) == 0) stop("Ds-optimality needs `idx_params`.")
+    } else if (is.null(B)) {
+        stop("I-optimality needs `B`.")
+    }
+
+    M <- M0
+    cand_left <- seq_len(nrow(X))
+    selected <- integer(0)
+
+    for (k in seq_len(n_select)) {
+        Xc <- X[cand_left, , drop = FALSE]
+        gain <- numeric(length(cand_left))
+
+        for (j in seq_len(ns)) {
+            Minv <- solve(M[, , j])
+            A <- Minv %*% t(Xc)                                # p x m
+            q <- 1 / w[cand_left, j] + colSums(t(Xc) * A)      # 1/w + x'M^-1x
+            if (criterion == "ds") {
+                S <- solve(Minv[idx_params, idx_params, drop = FALSE])
+                aS <- A[idx_params, , drop = FALSE]
+                ratio <- colSums(aS * (S %*% aS)) / q
+                gain_j <- -log(pmax(1 - ratio, 1e-12))
+            } else {
+                gain_j <- colSums(A * (B[, , j] %*% A)) / q
+            }
+            gain <- gain + species_weights[j] * gain_j
+        }
+
+        best <- which.max(gain)
+        x_best <- X[cand_left[best], ]
+        for (j in seq_len(ns)) {
+            M[, , j] <- M[, , j] + w[cand_left[best], j] * tcrossprod(x_best)
+        }
+        selected <- c(selected, cand_left[best])
+        cand_left <- cand_left[-best]
+    }
+    selected
+}
+
+
+##### KL Divergence ##### -----------------------------------------------------
+# A function that converts probabilities to the logit scale, after clamping
+# them away from 0 and 1 (which would give infinite values).
+# ARGS:
+#   - p: a numeric (vector, matrix or array). Probabilities in [0, 1].
+#   - eps: a numeric. Probabilities are clamped to [eps, 1 - eps].
+# RETURNS:
+#   - A numeric of the same shape as p. log(p / (1 - p)) of the clamped values.
+logit_safe <- function(p, eps = 1e-6) {
+    p <- pmin(pmax(p, eps), 1 - eps)
+    log(p / (1 - p))
+}
+
+# A function that computes the closed-form KL divergence between two univariate
+# Gaussians, KL(P || Q) with P = N(mu_p, sd_p^2) and Q = N(mu_q, sd_q^2).
+# ARGS:
+#   - mu_p, sd_p: numerics. Mean and standard deviation of P.
+#   - mu_q, sd_q: numerics. Mean and standard deviation of Q.
+#       (sd_p and sd_q must be strictly positive.)
+# RETURNS:
+#   - A numeric of the same shape as the inputs. The KL(P || Q), in nats.
+kl_gaussian <- function(mu_p, sd_p, mu_q, sd_q) {
+    log(sd_q / sd_p) + (sd_p^2 + (mu_p - mu_q)^2) / (2 * sd_q^2) - 0.5
+}
+
+# A function that computes the KL divergence between two Bernoulli
+# distributions, KL(Bern(p) || Bern(q)).
+# Compared to kl_gaussian, it ignores uncertainty, but needs no distributional 
+# assumption, so it is a good robustness check.
+# ARGS:
+#   - p: a numeric. Success probability of the first distribution (P).
+#   - q: a numeric. Success probability of the second distribution (Q).
+#   - eps: a numeric. Probabilities are clamped to [eps, 1 - eps] to avoid
+#       infinite values when p or q is exactly 0 or 1.
+# RETURNS:
+#   - A numeric of the same shape as the inputs. The KL(P || Q), in nats.
+kl_bernoulli <- function(p, q, eps = 1e-6) {
+    p <- pmin(pmax(p, eps), 1 - eps)
+    q <- pmin(pmax(q, eps), 1 - eps)
+    p * log(p / q) + (1 - p) * log((1 - p) / (1 - q))
+}
+
+# A function that summarises the posterior distribution of the predictions of
+# an Hmsc model, for each (site, species) pair. Used to avoid storing every
+# MCMC draw (and to compute the reference model's summary only once).
+# ARGS:
+#   - preds_list: a list of length n_draws, each element a matrix of
+#       n_sites x n_species (output of predict_hmsc()).
+#   - eps: a numeric. Probabilities are clamped before the logit
+#       transformation (see logit_safe()).
+# RETURNS:
+#   - A list of three n_sites x n_species matrices:
+#       - p_mean: posterior mean of the predicted probability.
+#       - lg_mean: posterior mean of the predicted probability, logit scale.
+#       - lg_sd: posterior standard deviation, logit scale.
+summarise_prediction_posterior <- function(preds_list, eps = 1e-6) {
+    arr <- abind(preds_list, along = 3)          # site x species x draws
+    lg <- logit_safe(arr, eps)
+    list(
+        p_mean = apply(arr, c(1, 2), mean),
+        lg_mean = apply(lg, c(1, 2), mean),
+        lg_sd = apply(lg, c(1, 2), sd)
+    )
+}
+
+# A function that computes the KL divergence between the posterior predictions
+# of a reference Hmsc model and a retrained Hmsc model, on a common set of
+# evaluation sites. D_KL are averaged over sites, giving one value per species.
+# ARGS:
+#   - hM_ref: a fitted Hmsc model object. The reference model.
+#   - hM_new: a fitted Hmsc model object. The retrained model (same
+#       random-effect structure as hM_ref).
+#   - df: a dataframe of evaluation sites, with columns lon, lat, row_id
+#       and names in x_cols.
+#   - x_cols: a list of strings. The names of the explanatory variables.
+#   - direction: a string. D_KL is directional, use "new_vs_ref" for 
+#       KL(new || ref), "ref_vs_new" for KL(ref || new), and "symmetric" for 
+#       the mean of both. Outputs all three by defaults.
+#   - sd_floor: a numeric. Lower bound on logit-scale standard deviations
+#       (avoids infinite KL when a posterior is almost degenerate).
+#   - eps: a numeric. Clamping of probabilities (see logit_safe()).
+#   - ref_summary: NULL or the output of summarise_prediction_posterior() for
+#       hM_ref on df. The reference is the same for all runs of a given fold:
+#       compute it once and pass it here to save time.
+# RETURNS:
+#   - A named list of two named numeric vectors (one value per species), in
+#       the same format as evaluateModelFitCustom():
+#       - KL_logit_gauss
+#       - KL_bernoulli
+kl_between_models <- function(
+        hM_ref, hM_new, df, x_cols,
+        direction = c("new_vs_ref", "ref_vs_new", "symmetric"),
+        sd_floor = 1e-3, eps = 1e-6, ref_summary = NULL) {
+    direction <- match.arg(direction)
+
+    # Check that models used a "probit" distribution, this function was not
+    # made to handle other distributions.
+    if (hM_ref$call$distr != "probit") {
+        stop("kl_between_models can only handle HMSC models that used parameter `distr = 'probit'`")
+    }
+
+    if (is.null(ref_summary)) {
+        ref_summary <- summarise_prediction_posterior(
+            predict_hmsc(hM = hM_ref, df = df, x_variables = x_cols), eps)
+    }
+    new_summary <- summarise_prediction_posterior(
+        predict_hmsc(hM = hM_new, df = df, x_variables = x_cols), eps)
+
+    sd_ref <- pmax(ref_summary$lg_sd, sd_floor)
+    sd_new <- pmax(new_summary$lg_sd, sd_floor)
+
+    kl_g_new_ref <- kl_gaussian(
+        new_summary$lg_mean, sd_new, ref_summary$lg_mean, sd_ref)
+    kl_g_ref_new <- kl_gaussian(
+        ref_summary$lg_mean, sd_ref, new_summary$lg_mean, sd_new)
+    kl_b_new_ref <- kl_bernoulli(new_summary$p_mean, ref_summary$p_mean, eps)
+    kl_b_ref_new <- kl_bernoulli(ref_summary$p_mean, new_summary$p_mean, eps)
+
+    pick <- function(new_ref, ref_new) {
+        switch(direction,
+            new_vs_ref = new_ref,
+            ref_vs_new = ref_new,
+            symmetric = (new_ref + ref_new) / 2)
+    }
+    kl_g <- pick(kl_g_new_ref, kl_g_ref_new)
+    kl_b <- pick(kl_b_new_ref, kl_b_ref_new)
+
+    sp_names <- hM_new$spNames
+    list(
+        KL_logit_gauss = setNames(colMeans(kl_g), sp_names),
+        KL_bernoulli = setNames(colMeans(kl_b), sp_names)
+    )
 }

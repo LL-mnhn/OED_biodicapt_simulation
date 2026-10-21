@@ -13,11 +13,15 @@ library(colorspace)
 REMOTE_USERNAME <- "lehnhofl"
 OBS_YEAR <- "2018"  # Most recent year for CLC dataset
 RES_KM <- 5         # best compromise I think
-# Values for map extent (France limits with buffer, in CRS 4326)
-LON_MIN <- -5
-LON_MAX <- 9.55
-LAT_MIN <- 41.35
-LAT_MAX <- 51.05
+# Values for map extent (France limits with buffer, in PROJECT_CRS)
+LON_MIN <- 3200000
+LON_MAX <- 4300000
+LAT_MIN <- 2000000
+LAT_MAX <- 3150000
+
+PROJECT_CRS <- "EPSG:3035"  # Must be a metric projection (either 3035 or 2154)
+PROJECT_CRS_TAG  <- gsub(":", "", PROJECT_CRS)   # for file names
+FRANCE_BBOX_4326 <- c(xmin = -5.5, ymin = 41.2, xmax = 9.7, ymax = 51.2)
 
 
 ### Global paths --------------------------------------------------------------
@@ -57,6 +61,14 @@ CORINE_PATH_PREPROCESSED <- file.path(
     PROCESSED_DATA_PATH, 
     paste0("original_CLC", OBS_YEAR, "_simplified_categories.tif"))
 
+# Small Woody Features
+SWF_FILEPATH <- file.path(RAW_DATA_PATH, "woody_features", 
+                          paste0("SWF_", OBS_YEAR, "_100m_03035_V1_0.tif"))
+SWF_PATH_PREPROCESSED <- file.path(
+    PROCESSED_DATA_PATH, paste0("SWF_", OBS_YEAR, "_100m_with_buffer.tif"))
+SWF_PROJECTION_BASEPATH <- file.path(
+    PROCESSED_DATA_PATH, paste0("SWF_", OBS_YEAR, "_100m_with_buffer")) 
+
 # CHELSA
 CHELSA_DATASETS <- c("hurs", "pr", "tas") # see https://www.chelsa-climate.org/datasets/chelsa_monthly
 CHELSA_UNITS <- c("%", expression(paste("kg m"^{-2}, " month"^{-1})), "K")
@@ -66,7 +78,7 @@ CHELSA_PROJECTION_BASEPATHS <- file.path(
     PROCESSED_DATA_PATH, paste0("CHELSA_", OBS_YEAR, "_", CHELSA_DATASETS))
 CHELSA_ANNUAL_PATHS <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("CHELSA_", OBS_YEAR, "_", CHELSA_DATASETS,  "_annual-WGS84.tif"))
+    paste0("CHELSA_", OBS_YEAR, "_", CHELSA_DATASETS,  "_annual-EPSG4326.tif")) # 4326 is the default CRS for CHELSA data
 
 # NDVI
 NASA_NDVI_FOLDER <- file.path(RAW_DATA_PATH, "NASA-NDVI")
@@ -75,7 +87,7 @@ NDVI_PROJECTION_BASEPATH <- file.path(
         paste0("NDVI_", OBS_YEAR))
 NDVI_ANNUAL_PATH <- file.path(
         PROCESSED_DATA_PATH,
-        paste0("NDVI_", OBS_YEAR, "_annual-WGS84.tif"))
+        paste0("NDVI_", OBS_YEAR, "_annual-EPSG4326.tif"))
 
 # Elevation
 ELEVATION_ZOOM_LEVEL <- 7
@@ -100,23 +112,48 @@ LIGHT_POLLUTION_PROJECTION_BASEPATH <- file.path(
 BIODICAPT_OBS_FULL <- file.path(
     PROCESSED_DATA_PATH, 
     paste0("anonymised_BIODICAPT_", OBS_YEAR, "_obs_features_res", RES_KM, 
-    "km-WGS84.gpkg"))
+    "km-", PROJECT_CRS_TAG, ".gpkg"))
+BIODICAPT_OBS_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_anonymised_BIODICAPT_", OBS_YEAR, "_obs_features_res", RES_KM, 
+    "km-", PROJECT_CRS_TAG, ".gpkg"))
+
 ENI500_OBS_FULL <- file.path(
     PROCESSED_DATA_PATH, 
     paste0("anonymised_ENI500_", OBS_YEAR, "_obs_features_res", RES_KM, 
-    "km-WGS84.gpkg"))
+    "km-", PROJECT_CRS_TAG, ".gpkg"))
+ENI500_OBS_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_anonymised_ENI500_", OBS_YEAR, "_obs_features_res", RES_KM, 
+    "km-", PROJECT_CRS_TAG, ".gpkg"))
+
 STOC_OBS_FULL <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("STOC_", OBS_YEAR, "_obs_features_res", RES_KM, "km-WGS84.gpkg"))
+    paste0("STOC_", OBS_YEAR, "_obs_features_res", RES_KM, "km-", PROJECT_CRS_TAG, ".gpkg"))
+STOC_OBS_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_STOC_", OBS_YEAR, "_obs_features_res", RES_KM, "km-", PROJECT_CRS_TAG, ".gpkg"))
+
 FEATURES_RAW_FULL <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("RAW_", OBS_YEAR, "_env-data_nokm-WGS84.tif"))
+    paste0("RAW_", OBS_YEAR, "_env-data_nokm-", PROJECT_CRS_TAG, ".tif"))
+FEATURES_RAW_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_RAW_", OBS_YEAR, "_env-data_nokm-", PROJECT_CRS_TAG, ".tif"))
+
 FEATURES_RES_FULL <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("RASTER_", OBS_YEAR, "_env-data_", RES_KM, "km-WGS84.tif"))
+    paste0("RASTER_", OBS_YEAR, "_env-data_", RES_KM, "km-", PROJECT_CRS_TAG, ".tif"))
+FEATURES_RES_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_RASTER_", OBS_YEAR, "_env-data_", RES_KM, "km-", PROJECT_CRS_TAG, ".tif"))
+
 FEATURES_HEX_FULL <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("HEX_", OBS_YEAR, "_env-data_", RES_KM, "km-WGS84.gpkg"))
+    paste0("HEX_", OBS_YEAR, "_env-data_", RES_KM, "km-", PROJECT_CRS_TAG, ".gpkg"))
+FEATURES_HEX_TRF <- file.path(
+    PROCESSED_DATA_PATH, 
+    paste0("vtransform_HEX_", OBS_YEAR, "_env-data_", RES_KM, "km-", PROJECT_CRS_TAG, ".gpkg"))
 
 
 # Species names
@@ -138,13 +175,43 @@ NAMES_SPECIES <- c(
                   
 
 ### Simulations and Models ----------------------------------------------------
-K_FOLDS <- 10
+K_FOLDS <- 3
+
+# FYI: 
+#   - "clc" is removed because it is a categorical variable
+#   - "distance to NODATA" is removed, not informative
+#   - "peramanent.crops" is removed as it easily heavily biased against brittany
+#   - Layers that are correlated together are removed:
+#       - "CHELSA_tas" (correlated with elevation)
+#       - "prop_artificial.surfaces_within_7071m" (correlated with light_pollution)
+#       - "prop_water.bodies_within_7071m" (correlated with distance.to.water.bodies)
+#       - "prop_arable.land_within_7071m" (correlated with distance.to.arable.land)
+#       - "prop_pastures_within_7071m" (correlated with distance.to.pastures)
 X_VARIABLES <- c(
-    "chelsa_hurs", "chelsa_pr", "chelsa_tas", "ndvi", "light_pollution", 
-    "distance.to.artificial.surfaces", "distance.to.arable.land",
-    "distance.to.pastures", 
-    "distance.to.heterogeneous.agricultural.areas", "distance.to.wetlants",
-    "distance.to.forest.and.semi.natural.areas", "distance.to.water.bodies")
+    "chelsa_hurs", "chelsa_pr", "elevation", "ndvi", "light_pollution", 
+
+    "distance.to.artificial.surfaces", "distance.to.arable.land", 
+    "distance.to.pastures", "distance.to.heterogeneous.agricultural.areas", 
+    "distance.to.wetlands", "distance.to.forest.and.semi.natural.areas", 
+    "distance.to.water.bodies",
+
+    "prop_heterogeneous.agricultural.areas_within_7071m", 
+    "prop_wetlands_within_7071m",
+    "prop_forest.and.semi.natural.areas_within_7071m",
+    
+    "swf")
+X_UNITS <- list(
+    "%", expression(paste("kg m"^{-2}, " month"^{-1})), "m", "Index", "DN",
+    "m", "m", "m", "m", "m", "m", "m",
+    "%", "%", "%",
+    "%"
+)
+
+# Parameters of interest for Ds-optimality 
+# (other parameters are considered as noise)
+ACTIONABLE_VARIABLES <- c("light_pollution") 
+
+
 NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
                        

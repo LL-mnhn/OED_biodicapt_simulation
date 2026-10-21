@@ -12,18 +12,17 @@ data/raw_data/*
 data/preprocessed_data/*
 # ...except necessary folder/files
 !data/raw_data/.gitkeep
-!data/preprocessed_data/anonymised_BIODICAPT_2018_obs_features_res5km-WGS84.gpkg
-!data/preprocessed_data/anonymised_ENI500_2018_obs_features_res5km-WGS84.gpkg
-!data/preprocessed_data/STOC_2018_obs_features_res5km-WGS84.gpkg
-!data/preprocessed_data/RASTER_2018_env-data_5km-WGS84.tif
-!data/preprocessed_data/RASTER_2018_env-data_5km-WGS84.tif.aux.xml
-!data/preprocessed_data/RAW_2018_env-data_nokm-WGS84.tif
-!data/preprocessed_data/RAW_2018_env-data_nokm-WGS84.tif.aux.xml
-!data/preprocessed_data/HEX_2018_env-data_5km-WGS84.gpkg
+!data/preprocessed_data/anonymised_*
+!data/preprocessed_data/STOC*
+!data/preprocessed_data/RASTER_2018_env-data*.tif
+!data/preprocessed_data/RASTER_2018_env-data*.tif.aux.xml
+!data/preprocessed_data/RAW_2018_env-data*.tif
+!data/preprocessed_data/RAW_2018_env-data*.tif.aux.xml
+!data/preprocessed_data/HEX_2018_env-data*.gpkg
 
 # Outputs results - only show 1st k-fold remove others manually
-outputs/results/model_*_[2-9]/*
-outputs/results/model_*_10/*
+outputs/results/model*
+!outputs/results/model_*_k1
 MeSU_outputs/
 
 # Renv - can be rebuilt from renv.lock
