@@ -1,0 +1,690 @@
+---
+title: "Optimality criterion with HMSC"
+subtitle: "Do the Fisher approximations match what HMSC actually learns?"
+
+author:
+  - name: Loïc Lehnhoff
+    orcid: 0000-0002-2100-6626
+    email: loic.lehnhoff@mnhn.fr
+    affiliation: UMR CESCO
+  - name: Karine Princé
+    affiliation: UMR CESCO
+  - name: Nicolas Parisey
+    affiliation: UMR IGEPP
+
+date: last-modified
+date-format: iso
+
+toc: true
+toc-location: right
+toc-depth: 4
+toc-expand: 2
+number-sections: true
+
+theme:
+  light: cosmo
+
+execute:
+  fig-format: png
+  fig-dpi: 300
+  dev: cairo_pdf
+  warning: false
+  message: false
+
+format:
+  html:
+    embed-resources: true
+    page-layout: article
+  pdf:
+    documentclass: article
+    papersize: a4
+    geometry:
+      - margin=30mm
+---
+
+# What this document checks
+
+Are the criteria computed with the Fisher approximations close to the criteria measured on the posterior of the HMSC model, refitted on the designs chosen from the approximations?
+
+In this document, we will consider multi-species presence-absence data with residual associations with the following workflow:
+
+1. Simulation:
+    - 2 covariates.
+    - 2 latent factors.
+    - 5 species whose presence depends on the covariates and latent factors.
+2. Initial model: HMSC is fitted a first time on existing observation sites ("BIODICAPT" sites in our study). 
+3. Using five strategies (random-sampling, gap-filling, max-uncertainty, greedy-Ds-optimality and greedy-I-optimality) choose 50 of the 500 candidate sites ("500 ENI").
+4. For each design:
+    - (a) the optimality criterion is computed using the approximation formula ($M_j = X^\top (W_j^{-1} + G_j)^{-1} X$).
+    - The model is fitted again, but on the new design.
+    - (b) Compute the realised criteria, obtained from the posterior of the refitted HMSC.
+5. Compare (a) and (b).
+
+# Simulated world
+
+## Settings
+
+```{r}
+#| label: settings
+library(Hmsc)
+library(coda)
+
+set.seed(42)
+
+S        <- 5        # number of species
+n_cand   <- 500      # candidate sites (500 ENI)
+n_select <- 50       # budget (10 % of the candidates)
+n_random <- 1        # number of random designs (each one needs an HMSC refit)
+n_lf     <- 2        # true number of latent factors
+idx_s    <- 2        # parameter of interest: x1 (column 2 of the design matrix)
+n_per_cluster <- 25  # existing design: number of obs per cluster (5 clusters)
+
+# HMSC MCMC settings (increase for real work)
+mcmc <- list(thin = 5, samples = 500, transient = 1500, nChains = 3)
+```
+
+## Environment, existing and candidate sites
+
+```{r}
+#| label: world
+# environmental fields over the unit square
+x1_field <- function(u, v) 3 * (u - 0.5) + 0.4 * sin(2 * pi * v) # west-east gradient
+x2_field <- function(u, v) 2 * (v - 0.5) + 1.2 * (u - 0.5) # partly confounded with x1
+design_matrix <- function(u, v) cbind("(Intercept)" = 1, x1 = x1_field(u, v), x2 = x2_field(u, v))
+
+# candidate sites: uniformly distributed
+cand   <- data.frame(u = runif(n_cand), v = runif(n_cand))
+X_cand <- design_matrix(cand$u, cand$v)
+centres <- data.frame(u = c(0.15, 0.80, 0.45, 0.20, 0.65),
+                      v = c(0.20, 0.15, 0.50, 0.45, 0.90))
+n_ref <- nrow(centres) * n_per_cluster
+ref   <- data.frame(
+  u = pmin(pmax(rep(centres$u, each = n_per_cluster) + rnorm(n_ref, sd = 0.04), 0), 1),
+  v = pmin(pmax(rep(centres$v, each = n_per_cluster) + rnorm(n_ref, sd = 0.04), 0), 1))
+X_ref <- design_matrix(ref$u, ref$v)
+
+# prediction region: a regular grid on the square (used for the I-criterion)
+g_test <- seq(0, 1, length.out = 30)
+test   <- expand.grid(u = g_test, v = g_test)
+X_test <- design_matrix(test$u, test$v)
+
+# moment matrix of the prediction region, on the linear-predictor scale
+B_test <- crossprod(X_test) / nrow(X_test)
+```
+
+```{r}
+#| label: applied-map
+#| fig-width: 6
+#| fig-height: 5.5
+#| echo: false
+g_map <- seq(0, 1, length.out = 100)
+x1_map <- outer(g_map, g_map, x1_field)
+image(g_map, g_map, x1_map, col = hcl.colors(50, "Blues 3", rev = TRUE), asp = 1, xlab = "", ylab = "", main =  "Probability of presence, candidate and existing sites")
+points(ref$u, ref$v, pch = 17, cex = 0.6, col = "firebrick")
+points(cand$u, cand$v, pch = 16, cex = 0.4, col = adjustcolor("black", 0.35))
+```
+
+## True species responses and simulated observations
+
+Each species has its own $\beta_j$, and species share two latent factors (residual associations). Observations are simulated from the HMSC probit model itself, so that the true parameters live on the same scale as the HMSC estimates (residual variance fixed to 1).
+
+The observations are simulated **once** for all existing and candidate sites: every design then picks a subset of the same "real world" data.
+
+```{r}
+#| label: truth
+sp_names  <- sprintf("sp%02d", seq_len(S))
+beta_true <- rbind("(Intercept)" = rnorm(S, -0.2, 0.4),
+                   x1            = rnorm(S,  0.7, 0.5),
+                   x2            = rnorm(S,  0.3, 0.4))
+colnames(beta_true) <- sp_names
+lambda_true <- matrix(rnorm(n_lf * S, 0, 0.7), n_lf, S, dimnames = list(NULL, sp_names))
+
+X_all <- rbind(X_ref, X_cand)
+repeat {   # re-draw the noise until every species is observed (present and absent) in the existing sites
+  eta_lat <- matrix(rnorm(nrow(X_all) * n_lf), ncol = n_lf)
+  Z       <- X_all %*% beta_true + eta_lat %*% lambda_true +
+             matrix(rnorm(nrow(X_all) * S), ncol = S)
+  Y_all   <- (Z > 0) * 1
+  colnames(Y_all) <- sp_names
+  Y_ref   <- Y_all[seq_len(n_ref), ]
+  if (all(colSums(Y_ref) >= 3 & colSums(Y_ref) <= n_ref - 3)) break
+}
+Y_cand <- Y_all[-seq_len(n_ref), ]
+
+round(rbind(prevalence_existing   = colMeans(Y_ref),
+            prevalence_candidates = colMeans(Y_cand)), 2)
+```
+
+### Species distributions
+
+True probability of presence of each species from the fixed effects, $\Phi(x^\top\beta_j)$, with the observations at the existing sites on top. (Actual presences are also affected by the latent factors, so a species can be observed where the map is pale, and vice versa.)
+
+```{r}
+#| label: species-maps
+#| fig-width: 9
+#| fig-height: 6
+g_map    <- seq(0, 1, length.out = 100)
+grid_map <- expand.grid(u = g_map, v = g_map)     # u varies fastest -> matrix(nrow = length(g_map))
+X_map    <- design_matrix(grid_map$u, grid_map$v)
+eta_map  <- X_map %*% beta_true                   # (100*100) x S
+pal      <- hcl.colors(50, "YlGnBu", rev = TRUE)  # light = rare, dark = likely
+
+par(mfrow = c(ceiling((S + 1) / 3), 3), mar = c(3, 3, 3, 1))
+for (j in seq_len(S)) {
+  p_map <- matrix(pnorm(eta_map[, j]), length(g_map), length(g_map))
+  image(g_map, g_map, p_map, col = pal, zlim = c(0, 1), asp = 1, xlab = "", ylab = "",
+        main = sprintf("%s (observed prevalence: %.2f)", sp_names[j], mean(Y_ref[, j])),
+        cex.main = 0.95)
+  present <- Y_ref[, j] == 1
+  points(ref$u[present],  ref$v[present],  pch = 19, cex = 0.7, col = "firebrick")
+  points(ref$u[!present], ref$v[!present], pch = 1,  cex = 0.7, col = "black")
+}
+
+# last panel: legend
+plot.new()
+legend("top", bty = "n", title = "Existing sites",
+       legend = c("present", "absent"), pch = c(19, 1), col = c("firebrick", "black"))
+legend("bottom", bty = "n", title = "P(presence)",
+       legend = c("0", "0.5", "1"), fill = pal[c(1, 25, 50)])
+```
+
+# HMSC wrapper
+
+`fit_hmsc()` fits a probit HMSC model with one site-level (non-spatial) random effect, i.e. $K_{lh} = I$. The covariates are **not** rescaled (`XScale = FALSE`) so that the posterior of $\beta$ is on the same scale as our design matrix.
+
+This function returns what the criteria need: the posterior draws of $\beta_j$, their mean, and $\hat g_j = \sum_h \mathbb E(\lambda_{hj}^2)$.
+
+```{r}
+#| label: fit-function
+fit_hmsc <- function(Y, X, keep_model = FALSE) {
+  n      <- nrow(Y)
+  units  <- sprintf("site%03d", seq_len(n))
+  sdes   <- data.frame(site = factor(units))
+  rL     <- setPriors(HmscRandomLevel(units = units), nfMax = 4)
+  m <- Hmsc(Y = Y,
+            XData = data.frame(x1 = X[, "x1"], x2 = X[, "x2"]),
+            XFormula = ~ x1 + x2, XScale = FALSE,
+            studyDesign = sdes, ranLevels = list(site = rL),
+            distr = "probit")
+  m <- sampleMcmc(m, thin = mcmc$thin, samples = mcmc$samples,
+                  transient = mcmc$transient, nChains = mcmc$nChains, nParallel = mcmc$nChains, verbose = 0)
+
+  post <- poolMcmcChains(m$postList)
+  nd   <- length(post)
+  Bd   <- array(NA_real_, c(nd, ncol(X), ncol(Y)),
+                dimnames = list(NULL, colnames(X), colnames(Y)))
+  gd   <- matrix(NA_real_, nd, ncol(Y))
+  for (d in seq_len(nd)) {
+    Bd[d, , ] <- post[[d]]$Beta
+    gd[d, ]   <- colSums(matrix(post[[d]]$Lambda[[1]], ncol = ncol(Y))^2)
+  }
+  out <- list(beta_draws = Bd,
+              beta_mean  = apply(Bd, c(2, 3), mean),
+              g          = colMeans(gd))
+  if (keep_model) out$model <- m
+  out
+}
+```
+
+## Reference model (BIODICAPT only) and planning values
+
+```{r}
+#| label: base-fit
+set.seed(1)
+base <- fit_hmsc(Y_ref, X_ref, keep_model = TRUE)
+
+# convergence diagnostics for the reference model
+cd   <- convertToCodaObject(base$model)
+psrf <- gelman.diag(cd$Beta, multivariate = FALSE)$psrf[, 1]
+ess  <- effectiveSize(cd$Beta)
+rbind(psrf = summary(psrf), ESS = summary(ess))
+```
+
+```{r}
+#| label: planning
+# planning values = posterior means of the reference model
+beta_hat <- base$beta_mean           # p x S
+g_hat    <- base$g                   # S  (diagonal of G_j: sum_h E(lambda_hj^2))
+
+round(rbind(true = colSums(lambda_true^2), estimated = g_hat), 2)
+round(cbind(beta1_true = beta_true["x1", ], beta1_hat = beta_hat["x1", ]), 2)
+```
+
+# Fisher approximations
+
+For each species $j$, the working model has noise variance $1/w_{ij}$ plus a random-effect variance $g_j$ (independent sites, so $K = I$ and $k = 0$). The effective weight of a site is therefore
+
+$$
+w^{\text{eff}}_{ij} = \frac{1}{\frac{1}{w_{ij}} + \hat g_j}, \qquad M_j = X^\top \operatorname{diag}(w^{\text{eff}}_{\cdot j})\, X .
+$$
+
+```{r}
+#| label: fisher
+probit_weights <- function(eta, eps = 1e-8) {
+  p <- pmin(pmax(pnorm(eta), eps), 1 - eps)
+  dnorm(eta)^2 / (p * (1 - p))
+}
+
+# effective weights (n x S) from the planning values
+w_eff <- function(X) {
+  eta <- X %*% beta_hat
+  w   <- matrix(probit_weights(eta), nrow(X), S)
+  1 / (1 / w + matrix(g_hat, nrow(X), S, byrow = TRUE))
+}
+W_ref  <- w_eff(X_ref)
+W_cand <- w_eff(X_cand)
+M_ref  <- lapply(seq_len(S), function(j) crossprod(X_ref, X_ref * W_ref[, j]))
+
+eta_test_plan <- X_test %*% beta_hat
+
+# Ds-criterion of one information matrix: log det of the Schur complement
+ds_logdet <- function(M, idx_s) {
+  Sch <- M[idx_s, idx_s, drop = FALSE] -
+    M[idx_s, -idx_s, drop = FALSE] %*%
+    solve(M[-idx_s, -idx_s, drop = FALSE], M[-idx_s, idx_s, drop = FALSE])
+  as.numeric(determinant(Sch, logarithm = TRUE)$modulus)
+}
+
+# approximated metrics (per species) of the design "existing + sel"
+approx_metrics <- function(sel) {
+  sapply(seq_len(S), function(j) {
+    M <- M_ref[[j]]
+    if (length(sel) > 0) {
+      Xs <- X_cand[sel, , drop = FALSE]
+      M  <- M + crossprod(Xs, Xs * W_cand[sel, j])
+    }
+    C <- solve(M)
+    c(Ds      = ds_logdet(M, idx_s),
+      I       = sum(diag(C %*% B_test)),
+      sd_b1   = sqrt(C[idx_s, idx_s]),
+      sd_pred = mean(dnorm(eta_test_plan[, j]) * sqrt(rowSums((X_test %*% C) * X_test))))
+  })   # 4 x S
+}
+```
+
+Sanity check of the closed-form gains (one species, one candidate): the gain announced by the Sherman–Morrison formulas must equal the difference of the criteria obtained by actually adding the site to $M$.
+
+```{r}
+#| label: check-formulas
+j <- 1; c1 <- 1
+x <- X_cand[c1, ]; w <- W_cand[c1, j]; M <- M_ref[[j]]
+Minv <- solve(M); a <- Minv %*% x
+q    <- 1 / w + sum(x * a)
+M2   <- M + w * tcrossprod(x)
+
+ds_formula <- -log(1 - (a[idx_s]^2 / Minv[idx_s, idx_s]) / q)
+ds_direct  <- ds_logdet(M2, idx_s) - ds_logdet(M, idx_s)
+i_formula  <- as.numeric(t(a) %*% B_test %*% a) / q
+i_direct   <- sum(diag(solve(M, B_test))) - sum(diag(solve(M2, B_test)))
+
+stopifnot(isTRUE(all.equal(ds_formula, ds_direct)),
+          isTRUE(all.equal(i_formula, i_direct)))
+c(Ds_formula = ds_formula, Ds_direct = ds_direct, I_formula = i_formula, I_direct = i_direct)
+```
+
+# The strategies
+
+The two greedy strategies score all candidates for every species with the closed-form gains, **sum the gains over species**, add the best candidate, update each $M_j$, and repeat. HMSC is never refitted during selection.
+
+```{r}
+#| label: strategies
+# 2. gap-filling (farthest-point sampling, relative to the existing sites)
+gap_filling <- function(coords, coords_ref, n_select) {
+  d_cand <- as.matrix(dist(coords))
+  d_ref  <- as.matrix(dist(rbind(coords_ref, coords)))[-seq_len(nrow(coords_ref)),
+                                                     seq_len(nrow(coords_ref))]
+  min_d <- apply(d_ref, 1, min)
+  sel <- integer(0)
+  for (k in seq_len(n_select)) {
+    nxt   <- which.max(min_d)
+    sel   <- c(sel, nxt)
+    min_d <- pmin(min_d, d_cand[nxt, ])
+  }
+  sel
+}
+
+# 3. max uncertainty: candidates where the *reference HMSC posterior* is the most variable
+#    (posterior SD of the fixed-effect probability, averaged over species; one shot, no refit)
+sd_post_cand <- rowMeans(sapply(seq_len(S), function(j) {
+  P <- pnorm(X_cand %*% t(base$beta_draws[, , j]))
+  sqrt(pmax(rowMeans(P^2) - rowMeans(P)^2, 0))
+}))
+
+# 4-5. greedy selection with closed-form gains, summed over species
+greedy <- function(criterion = c("Ds", "I"), n_select) {
+  criterion <- match.arg(criterion)
+  M    <- M_ref
+  left <- seq_len(n_cand)
+  sel  <- integer(0)
+  for (k in seq_len(n_select)) {
+    Xl   <- X_cand[left, , drop = FALSE]
+    gain <- numeric(length(left))
+    for (j in seq_len(S)) {
+      Minv <- solve(M[[j]])
+      A    <- Minv %*% t(Xl)                                # p x m
+      q    <- 1 / W_cand[left, j] + colSums(t(Xl) * A)
+      if (criterion == "Ds") {
+        Sj   <- solve(Minv[idx_s, idx_s, drop = FALSE])     # M_{1|2}
+        aS   <- A[idx_s, , drop = FALSE]
+        gain <- gain - log(1 - colSums(aS * (Sj %*% aS)) / q)
+      } else {
+        gain <- gain + colSums(A * (B_test %*% A)) / q
+      }
+    }
+    best <- left[which.max(gain)]
+    for (j in seq_len(S)) M[[j]] <- M[[j]] + W_cand[best, j] * tcrossprod(X_cand[best, ])
+    sel  <- c(sel, best)
+    left <- setdiff(left, best)
+  }
+  sel
+}
+
+sel_gap    <- gap_filling(cand[, c("u", "v")], ref[, c("u", "v")], n_select)
+sel_uncert <- order(sd_post_cand, decreasing = TRUE)[seq_len(n_select)]
+sel_ds     <- greedy("Ds", n_select)
+sel_i      <- greedy("I",  n_select)
+
+designs <- c(list("Gap-filling" = sel_gap, "Max uncertainty" = sel_uncert,
+                  "Greedy Ds" = sel_ds, "Greedy I" = sel_i),
+             setNames(replicate(n_random, sample(n_cand, n_select), simplify = FALSE),
+                      sprintf("Random %02d", seq_len(n_random))))
+```
+
+## Where do the strategies put the new sites?
+
+```{r}
+#| label: sites-map
+#| fig-width: 8
+#| fig-height: 8
+g_map <- seq(0, 1, length.out = 100)
+x1_map <- outer(g_map, g_map, x1_field)
+par(mfrow = c(2, 2), mar = c(3, 3, 3, 1))
+for (nm in c("Gap-filling", "Max uncertainty", "Greedy Ds", "Greedy I")) {
+  image(g_map, g_map, x1_map, col = hcl.colors(50, "Blues 3", rev = TRUE), asp = 1,
+        xlab = "", ylab = "", main = nm)
+  points(ref$u, ref$v, pch = 17, cex = 0.6, col = "firebrick")
+  points(cand$u[designs[[nm]]], cand$v[designs[[nm]]], pch = 21, bg = "white", cex = 0.8)
+}
+```
+
+Background: the covariate $x_1$ (darker = higher). Red triangles are the existing sites, white circles the 50 selected sites.
+
+# Realised criteria from HMSC
+
+For every design, HMSC is refitted on the existing + selected sites with the **same observations** that the design would have collected. The realised analogues of the criteria are computed from the posterior draws, per species $j$:
+
+- $\widehat\Psi_{D_s,j} = -\log\det\widehat{\operatorname{Cov}}_{\text{post}}(\beta_{S,j})$ (here $s=1$: minus the log posterior variance of the $x_1$ effect),
+- $\widehat I_j = \operatorname{tr}\bigl(\widehat{\operatorname{Cov}}_{\text{post}}(\beta_j)\,B\bigr)$, the posterior variance of $x_g^\top\beta_j$ averaged over the grid,
+- the posterior SD of $\beta_{1,j}$, and the posterior SD of the fixed-effect probability of presence $\Phi(x_g^\top\beta_j)$ averaged over the grid (to be compared with the delta-method value),
+- an error measure that has no approximated counterpart: the RMSE of the posterior-mean linear predictor against the **true** one.
+
+Species-level values are then summed (Ds, I) or averaged (SDs, RMSE) over species.
+
+```{r}
+#| label: realised
+realised_metrics <- function(fit) {
+  sapply(seq_len(S), function(j) {
+    D <- fit$beta_draws[, , j]                     # draws x p
+    C <- cov(D)
+    P <- pnorm(X_test %*% t(D))                    # grid x draws
+    c(Ds      = -as.numeric(determinant(C[idx_s, idx_s, drop = FALSE], logarithm = TRUE)$modulus),
+      I       = sum(diag(C %*% B_test)),
+      sd_b1   = sqrt(C[idx_s, idx_s]),
+      sd_pred = mean(sqrt(pmax(rowMeans(P^2) - rowMeans(P)^2, 0))))
+  })   # 4 x S
+}
+
+evaluate_design <- function(sel) {
+  fit <- fit_hmsc(rbind(Y_ref, Y_cand[sel, , drop = FALSE]),
+                  rbind(X_ref, X_cand[sel, , drop = FALSE]))
+  list(approx   = approx_metrics(sel),
+       real     = realised_metrics(fit),
+       rmse_lin = sqrt(mean((X_test %*% (fit$beta_mean - beta_true))^2)))
+}
+```
+
+```{r}
+#| label: run-all
+results <- list()
+results[["Base (BIODICAPT only)"]] <- list(
+    approx = approx_metrics(integer(0)), 
+    real = realised_metrics(base),
+    rmse_lin = sqrt(mean((X_test %*% (base$beta_mean - beta_true))^2)))
+for (i in seq_along(designs)) {
+    message(sprintf("[%d/%d] fitting HMSC for: %s", i, length(designs), names(designs)[i]))
+    set.seed(100 + i)
+    results[[names(designs)[i]]] <- evaluate_design(designs[[i]])
+}
+
+```
+
+```{r}
+#| label: assemble
+summarise_per_species <- function(per) {
+  c(Ds = sum(per["Ds", ]), I = sum(per["I", ]),
+    sd_b1 = mean(per["sd_b1", ]), sd_pred = mean(per["sd_pred", ]))
+}
+
+res <- do.call(rbind, lapply(names(results), function(nm) {
+  a <- summarise_per_species(results[[nm]]$approx)
+  r <- summarise_per_species(results[[nm]]$real)
+  data.frame(design = nm,
+             group  = ifelse(grepl("^Random", nm), "Random", nm),
+             setNames(as.list(a), paste0(names(a), "_approx")),
+             setNames(as.list(r), paste0(names(r), "_real")),
+             rmse_lin = results[[nm]]$rmse_lin,
+             row.names = NULL)
+}))
+
+base_row <- res[res$group == "Base (BIODICAPT only)", ]
+res      <- res[res$group != "Base (BIODICAPT only)", ]
+strat    <- c("Gap-filling", "Max uncertainty", "Greedy Ds", "Greedy I")
+cols     <- c("Gap-filling" = "darkorange", "Max uncertainty" = "forestgreen",
+              "Greedy Ds" = "steelblue", "Greedy I" = "firebrick")
+```
+
+# Results
+
+## Approximated vs realised criteria (table)
+
+Random designs are summarised by their median.
+
+```{r}
+#| label: table
+rand_med <- apply(res[res$group == "Random", -(1:2)], 2, median)
+tab <- rbind("Base (BIODICAPT only)" = base_row[, -(1:2)] |> unlist(),
+             "Random (median)"       = rand_med,
+             res[res$group %in% strat, -(1:2)] |> (\(d) { rownames(d) <- res$design[res$group %in% strat]; as.matrix(d) })())
+knitr::kable(
+  tab[, c("Ds_approx", "Ds_real", "I_approx", "I_real",
+          "sd_b1_approx", "sd_b1_real", "sd_pred_approx", "sd_pred_real", "rmse_lin")],
+  digits = 3,
+  col.names = c("Ds approx.", "Ds realised", "I approx.", "I realised",
+                "SD b1 approx.", "SD b1 realised", "SD pred. approx.", "SD pred. realised",
+                "RMSE (linear pred.)"))
+```
+
+## Do the approximations rank the designs like HMSC does?
+
+Each point is one design (grey: the random designs; coloured: the four other strategies). The dotted line is a linear fit. We report Spearman's rank correlation over all designs.
+
+::: {.panel-tabset}
+```{r}
+#| label: scatter-fun
+scatter_cmp <- function(metric, title) {
+  x <- res[[paste0(metric, "_approx")]]
+  y <- res[[paste0(metric, "_real")]]
+  is_rand <- res$group == "Random"
+  plot(x, y, type = "n", xlab = "approximation (Fisher, plug-in)",
+       ylab = "realised (HMSC posterior)",
+       main = sprintf("%s\nSpearman = %.2f (p = %.2f)", title,
+                      cor.test(x, y, method = "spearman")$estimate,
+                      cor.test(x, y, method = "spearman")$p.value))
+  abline(lm(y ~ x), col = "grey60", lty = 3)
+  points(x[is_rand],  y[is_rand],  pch = 16, col = adjustcolor("grey40", 0.6))
+  points(x[!is_rand], y[!is_rand], pch = 19, cex = 1.5, col = cols[res$group[!is_rand]])
+  legend("topleft", bty = "n", cex = 0.8, pch = c(16, rep(19, 4)),
+         col = c("grey40", cols), legend = c("random designs", names(cols)))
+}
+```
+
+#### Ds
+```{r}
+#| fig-width: 6
+#| fig-height: 5.5
+scatter_cmp("Ds", "Ds-criterion (sum over species, higher is better)")
+```
+
+#### I
+```{r}
+#| fig-width: 6
+#| fig-height: 5.5
+scatter_cmp("I", "I-criterion (sum over species, lower is better)")
+```
+
+#### SD of beta_1
+```{r}
+#| fig-width: 6
+#| fig-height: 5.5
+scatter_cmp("sd_b1", "SD of the x1 effect (mean over species)")
+```
+
+#### SD of predictions
+```{r}
+#| fig-width: 6
+#| fig-height: 5.5
+scatter_cmp("sd_pred", "SD of predicted probability (mean over species)")
+```
+:::
+
+## Is the ratio realised / approximated stable?
+
+If the approximation is only a rescaled version of the truth, the ratio should be close to constant across designs. A large spread would mean that the approximation can mislead the choice of the design.
+
+```{r}
+#| label: ratio
+ratio <- data.frame(
+  Ds_diff = res$Ds_real - res$Ds_approx,          # difference on the log scale
+  I       = res$I_real / res$I_approx,
+  sd_b1   = res$sd_b1_real / res$sd_b1_approx,
+  sd_pred = res$sd_pred_real / res$sd_pred_approx)
+knitr::kable(
+  rbind(median = sapply(ratio, median),
+        min    = sapply(ratio, min),
+        max    = sapply(ratio, max),
+        CV     = sapply(ratio, function(v) sd(v) / abs(mean(v)))),
+  digits = 3,
+  col.names = c("Ds: realised - approx. (log scale)", "I: ratio", "SD b1: ratio", "SD pred.: ratio"))
+```
+
+## Is the gain over the base model predicted correctly?
+
+This is the quantity the greedy algorithms actually maximise. For Ds the gain is $\Psi_{D_s}(\text{design}) - \Psi_{D_s}(\text{base})$ (higher is better); for I it is the **reduction** of the average prediction variance, $I(\text{base}) - I(\text{design})$ (higher is better).
+
+```{r}
+#| label: gain
+gain <- data.frame(
+  design        = res$design,
+  Ds_gain_approx = res$Ds_approx - base_row$Ds_approx,
+  Ds_gain_real   = res$Ds_real   - base_row$Ds_real,
+  I_gain_approx  = base_row$I_approx - res$I_approx,
+  I_gain_real    = base_row$I_real   - res$I_real)
+gain_tab <- rbind(
+  data.frame(design = "Random (median)", t(apply(gain[grepl("^Random", gain$design), -1], 2, median))),
+  gain[gain$design %in% strat, ])
+knitr::kable(gain_tab, digits = 3, row.names = FALSE,
+             col.names = c("Design", "Ds gain approx.", "Ds gain realised",
+                           "I gain approx.", "I gain realised"))
+```
+
+And the rank of the five "strategies" (random median + 4) under each evaluation (1 = best):
+
+```{r}
+#| label: ranks
+rk <- gain_tab
+rk_tab <- data.frame(
+  design        = rk$design,
+  Ds_approx     = rank(-rk$Ds_gain_approx),
+  Ds_realised   = rank(-rk$Ds_gain_real),
+  I_approx      = rank(-rk$I_gain_approx),
+  I_realised    = rank(-rk$I_gain_real))
+knitr::kable(rk_tab, row.names = FALSE,
+             col.names = c("Design", "Ds (approx.)", "Ds (realised)", "I (approx.)", "I (realised)"))
+```
+
+## Per-species check of the SD of $\beta_1$
+
+Per species, the approximated SD of $\beta_{1,j}$ (from $M_j^{-1}$) against the posterior SD from HMSC. Each point is one species in one design; the line is $y = x$. Ellipses are 95 % ellipses fitted in log space, crosses are their centres. For the random sampling, the points of **all** random designs are pooled.
+
+```{r}
+#| label: per-species
+#| fig-width: 6.5
+#| fig-height: 6
+ell_level <- 0.95
+
+# 95 % ellipse of a 2-column matrix (base R, no dependency)
+ellipse_base <- function(x, level = 0.95, npoints = 100) {
+  covx <- stats::cov(x)
+  ctr  <- colMeans(x)
+  eig  <- eigen(covx, symmetric = TRUE)
+  ang  <- seq(0, 2 * pi, length.out = npoints)
+  rad  <- sqrt(stats::qchisq(level, df = 2))
+  t(ctr + rad * eig$vectors %*% diag(sqrt(pmax(eig$values, 0))) %*% rbind(cos(ang), sin(ang)))
+}
+
+# points of each group: the 4 strategies, plus all random designs pooled
+rand_names <- grep("^Random", names(results), value = TRUE)
+get_pts <- function(nms) list(
+  x = unlist(lapply(results[nms], function(r) r$approx["sd_b1", ])),
+  y = unlist(lapply(results[nms], function(r) r$real["sd_b1", ])))
+grp_pts  <- c(list(Random = get_pts(rand_names)),                 # Random first: drawn underneath
+              setNames(lapply(strat, get_pts), strat))
+cols_all <- c(Random = "grey40", cols)
+
+rng <- range(unlist(grp_pts))
+plot(NA, xlim = rng, ylim = rng, log = "xy",
+     xlab = "approximated SD of beta_1 (per species)",
+     ylab = "posterior SD of beta_1 (HMSC, per species)",
+     main = "Per-species SD of the x1 effect")
+abline(0, 1)
+
+for (g in names(grp_pts)) {
+  x  <- grp_pts[[g]]$x
+  y  <- grp_pts[[g]]$y
+  ok <- is.finite(x) & is.finite(y) & x > 0 & y > 0
+  lx <- log10(x[ok]); ly <- log10(y[ok])
+  col <- cols_all[[g]]
+
+  points(x[ok], y[ok], pch = if (g == "Random") 16 else 19,
+         cex = if (g == "Random") 0.8 else 1, col = adjustcolor(col, 0.6))
+
+  # ellipse only if there are enough non-degenerate points
+  if (sum(ok) >= 3 && qr(cbind(1, lx, ly))$rank == 3) {
+    ell <- ellipse_base(cbind(lx, ly), level = ell_level)
+    lines(10^ell[, 1], 10^ell[, 2], col = col, lwd = 2, lty = if (g == "Random") 2 else 1)
+    points(10^mean(lx), 10^mean(ly), pch = 4, lwd = 3, cex = 1.3, col = col)   # centre
+  }
+}
+
+legend("topleft", bty = "n", cex = 0.8, pch = c(16, rep(19, length(strat))),
+       lty = c(2, rep(1, length(strat))), lwd = 2, col = cols_all,
+       legend = c(sprintf("Random (%d designs pooled)", length(rand_names)), strat))
+```
+
+# How to read the results
+
+The numbers depend on the seed and on the MCMC settings, so none are quoted here. What to look for:
+
+- **Ranking (Spearman close to 1 on the four panels)**: the approximation is good enough to *choose* a design without refitting HMSC, which is the only thing it is used for.
+- **Stable ratio** (small CV in the ratio table, points close to a line in the scatter plots): the approximation is a faithful proxy up to a rescaling. A ratio above 1 for the variances is expected: $M_j$ treats $\hat\beta_j$, $\hat g_j$ and the latent scores as known, while the posterior accounts for their uncertainty (and for the prior on $\beta$).
+- **Gain agreement**: the greedy designs should show the largest *approximated* gains on their own criterion, and the realised gains should be ordered the same way. This is the check that matters most, since the greedy algorithms maximise the approximated gain.
+- **The trade-off between inference and prediction** (best Ds design is not the best I design) should appear in the *realised* columns too, and not only in the approximated ones. If it does not, the approximation is hiding something.
+- **Weak spots to expect**: (i) species with extreme prevalence at the existing sites (the plug-in $\hat\beta_j$ is poorly estimated, so $w_{ij}$ is wrong); (ii) a base model fitted on 50 sites is a noisy planning value: re-running with another seed shows how much the design depends on it; (iii) the realised metrics are themselves noisy (finite MCMC, one simulated dataset per design), so differences between close designs are not meaningful.
+
+# Limits of this example
+
+- Planning values come from a single reference fit. In the real project, a sequential approach (select in batches, refit between them) would update them.
+- Max-uncertainty is done in one shot from the reference posterior. A batched version would need an HMSC refit per batch.
+- There is no spatial random effect, so $k = 0$ and $V_j$ is diagonal. The spatial extension of the report ($r$, $\sigma_c^2$) is not tested here.
+- $B$ is the moment matrix of the *linear predictor* over the grid, as in the report. Weighting it by $\varphi(\eta)^2$ per species would target the probability scale instead (this was done in the single-species example).
+- HMSC fits are sequential. For more designs or species, wrap `evaluate_design()` in `parallel::mclapply()` (keep `nParallel = 1` inside `sampleMcmc()`), or use `nParallel = nChains`.

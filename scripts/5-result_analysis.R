@@ -1,5 +1,5 @@
 # This script:
-#   - Analyses the results of the I-optimisation runs
+#   - Analyses the results of the different runs
 
 ##### Libraries ##### ---------------------------------------------------------
 library(cli)
@@ -45,7 +45,7 @@ R_EFFECT_PLOT <- "site"
 REFERENCE_EFFECTS$R_EFFECTS <-  R_EFFECT_PLOT
 
 # Plot parameters
-SUBSETS_PLOT <- c("test_stoc") # c("train", "test_local", "test_stoc")
+SUBSETS_PLOT <- c("train", "test_local", "test_stoc") # c("train", "test_local", "test_stoc")
 NEW_SAMPLE_SIZE_MAP <- 50
 STRATEGY_MAP <- "max-uncertainty"
 
@@ -101,8 +101,9 @@ fetch_all_scores <- function() {
             test_stoc = test_stoc_set
         )
 
+        ref_chains <- NULL # reset reference model
+        ref_info <- NULL # reset information of reference model
         # if needed (aka new samples added) load reference model
-        ref_chains <- NULL # reset reference model to NULL
         if (local_parameters$NEW_SAMPLE_SIZES > 0) {
             # Update random effects in reference model
             ref_params <- modifyList(
@@ -119,6 +120,15 @@ fetch_all_scores <- function() {
                 ref_cache$path <- ref_path
             }
             ref_chains <- ref_cache$chains
+
+            # Get information of the reference model on the selected new sites
+            # (same X scaling as the realised metrics, so they are comparable)
+            selected_df <- drop_na(as.data.frame(new_pool_set)[c(X_VARIABLES)])
+            ref_info <- get_hmsc_information(
+                hM = ref_chains, 
+                newdata = selected_df, 
+                x_cols = X_VARIABLES,
+                scaling_data = as.data.frame(k_dataset$train))
         }        
 
         for (j in 1:length(local_datasets)) {
@@ -146,21 +156,39 @@ fetch_all_scores <- function() {
                 format_scores(
                     scores, local_parameters, names(local_datasets)[j]))
             
-            # KL divergence (ref || retrained)
-            # Only on "test_stoc" set because no difference in the number of 
-            # sites between reference and retrained models.
-            if ((!is.null(ref_chains)) && (names(local_datasets)[j] == "test_stoc")) {
-                cli_alert_info("    - computing KL divergence vs reference ...")
-                kl_scores <- kl_between_models(
-                    hM_ref = ref_chains, 
-                    hM_new = chains, 
-                    df = tidyr::drop_na(as.data.frame(k_set)), 
-                    x_cols = X_VARIABLES,
-                    direction = "new_vs_ref")
+            # Expected (approximated) Ds and I from the reference model
+            if (!is.null(ref_info)) {
+                expected_scores <- get_expected_design_metrics(
+                    info = ref_info,
+                    actionable = ACTIONABLE_VARIABLES,
+                    target = as.data.frame(k_set) |> 
+                                drop_na() |> 
+                                select(all_of(X_VARIABLES))
+                    )
                 all_scores <- rbind(
-                    all_scores, 
-                    format_scores(kl_scores, local_parameters, names(local_datasets)[j]))
-            }
+                    all_scores,
+                    format_scores(
+                        expected_scores, 
+                        local_parameters, 
+                        names(local_datasets)[j]))
+            }            
+
+            # Optional: to explore KL divergence
+            # # KL divergence (ref || retrained)
+            # # Only on "test_stoc" set because thats the only dataset with the 
+            # # same number of sites in reference and retrained models.
+            # if ((!is.null(ref_chains)) && (names(local_datasets)[j] == "test_stoc")) {
+            #     cli_alert_info("    - computing KL divergence vs reference ...")
+            #     kl_scores <- kl_between_models(
+            #         hM_ref = ref_chains, 
+            #         hM_new = chains, 
+            #         df = tidyr::drop_na(as.data.frame(k_set)), 
+            #         x_cols = X_VARIABLES,
+            #         direction = "new_vs_ref")
+            #     all_scores <- rbind(
+            #         all_scores, 
+            #         format_scores(kl_scores, local_parameters, names(local_datasets)[j]))
+            # }
         } 
     }
     cli_alert_success("Scores loaded in data.frame!\n\n")
@@ -238,7 +266,6 @@ show_map_selected_new_pool <- function(complete_new_pool) {
         background_map = available_points,
         df = new_samples_freq |> filter(
             r_effect == R_EFFECT_PLOT),
-        cmap = viridisLite::plasma(256),
         lon_c = "lon", lat_c = "lat",
         column = "n_folds", unit = "# of selections",
         facet_formula = new_samples_size ~ strategies
@@ -308,27 +335,27 @@ if (file.exists(file.path(ANALYSES_PATH, "all_scores.csv"))) {
     write_csv(scores_df, file.path(ANALYSES_PATH, "all_scores.csv"))
 }
 
-
 # Select fixed effects of interest
 scores_df <- scores_df |> filter(R_EFFECTS == R_EFFECT_PLOT)
 
-# Add MSE metric
+# Add MSE and rename metrics
 scores_df <- scores_df |>
     bind_rows(
         scores_df |>
             filter(name == "RMSE") |>
             mutate(name = "MSE", score = score^2)
-)
-scores_df <- scores_df |>
+        ) |>
     mutate(name = recode(
         name,
         "SD" = "SD of predictions",
         "BetaSD" = "SD of parameters (all)",
         "BetaSD_actionable" = "SD of actionable parameters",
-        "Ds" = "Ds criterion",
-        "I" = "I criterion"))
+        "Ds" = "Ds criterion (realised)",
+        "I" = "I criterion (realised)",
+        "Ds_expected" = "Ds criterion (expected)",
+        "I_expected" = "I criterion (expected)"))
 
-# Divide reference and new values
+# Partition reference effects vs other effects
 ref_df <- scores_df |>
     semi_join(as_tibble(REFERENCE_EFFECTS), by = names(REFERENCE_EFFECTS))
 compare_df <- scores_df |>
@@ -337,7 +364,8 @@ compare_df <- scores_df |>
         by = names(REFERENCE_EFFECTS)
 )
 
-# Count number of species improving by >1% in MSE
+# Add number of species improving by >1% in MSE 
+# (to compare with doi.org/10.1111%2F2041-210X.14355)
 improvement_df <- count_improving(
     ref_df, compare_df,
     metric = "RMSE",
@@ -348,52 +376,86 @@ improvement_df["name"] <- "# of species with\nincrease in ΔMSE >1%"
 improvement_df <- improvement_df |> rename(diff_score = n_sp_above)
 
 
-##### Analyses ##### ----------------------------------------------------------
-##### Distribution plots ##### ------------------------------------------------
+##### Check criteria approximations ##### -------------------------------------
+ds_corr_plot <- corr_metrics(
+    scores = compare_df,
+    x_metric = "Ds criterion (expected)",
+    y_metric = "Ds criterion (realised)",
+    title = "Expected vs realised Ds criterion",
+    subtitle = "The higher the criterion, the better the estimation of the actionable parameters",
+    strat_order = ORDER_STRATS,
+    panel_order = c("train"),
+    save_to = file.path(ANALYSES_PATH, "ds-criterion_expected_vs_realised.pdf"))
+print(ds_corr_plot$plot)
+
+i_corr_plot <- corr_metrics(
+    scores = compare_df,
+    x_metric = "I criterion (expected)",
+    y_metric = "I criterion (realised)",
+    title = "Expected vs realised I criterion",
+    subtitle = "The lower the criterion, the better the predictions.",
+    strat_order = ORDER_STRATS,
+    panel_order = c("test_local", "test_stoc"),
+    save_to = file.path(ANALYSES_PATH, "i-criterion_expected_vs_realised.pdf"))
+print(i_corr_plot$plot)
+
+
+##### Check strategy effect on estimations/predictions ##### ------------------
 dist_metrics <- c(
     "SD of predictions" = "SD_distrib.pdf",
     "SD of parameters (all)" = "SD_parameters_all.pdf",
     "SD of actionable parameters" = "SD_parameters_actionable_distrib.pdf",
-    "Ds criterion" = "Ds_distrib.pdf",
-    "I criterion" = "I_distrib.pdf",
     "MSE" = "MSE_distrib.pdf")
 
 for (m in names(dist_metrics)) {
-    . <- compare_plot(
-        ref_scores = ref_df,
-        compare_scores = compare_df,
-        metric = m,
-        x_var = "STRATEGIES",
-        x_order = ORDER_STRATS,
-        fill_var = "NEW_SAMPLE_SIZES",
-        panel_var = "subset",
-        panel_order = SUBSETS_PLOT,
-        group_species = TRUE,
-        save_to = file.path(
-            ANALYSES_PATH, paste0("boxplot_", dist_metrics[[m]])))
-
-    . <- distribution_plot(
+    if (grepl("param", m)) {
+        subsets_plot <- SUBSETS_PLOT[1]
+    } else {
+        subsets_plot <- SUBSETS_PLOT
+    }
+    strat_violin_plot <- distribution_plot(
         scores = compare_df,
         ref_scores = ref_df,
         metric = m,
         strat_order = ORDER_STRATS,
-        panel_order = SUBSETS_PLOT,
+        panel_order = subsets_plot,
+        lower_is_better = TRUE,
         save_to = file.path(
-            ANALYSES_PATH, paste0("histplot_", dist_metrics[[m]])))
+            ANALYSES_PATH, paste0("violinplots_", dist_metrics[[m]])))
+    print(strat_violin_plot$plot)
 }
 
-### Improvement in quality of predictions (MSE)
-. <- compare_plot(
+
+##### Compare with doi.org/10.1111%2F2041-210X.14355 ##### --------------------
+violin_mse <- compare_plot(
+    ref_scores = ref_df,
+    compare_scores = compare_df,
+    metric = "MSE",
+    x_var = "NEW_SAMPLE_SIZES",
+    x_order = EFFECTS[[2]]$NEW_SAMPLE_SIZES,
+    fill_var = "STRATEGIES",
+    fill_order = EFFECTS[[2]]$STRATEGIES,
+    color_order = ORDER_STRATS,            
+    panel_var = "subset",
+    panel_order = SUBSETS_PLOT,
+    size_var = "NEW_SAMPLE_SIZES",
+    group_species = TRUE,
+    save_to = file.path(ANALYSES_PATH, "boxplot_MSE.pdf"))
+print(violin_mse$plot)
+
+violin_D_mse <- compare_plot(
         diffs_scores = improvement_df,
         metric = unique(improvement_df["name"])[[1]],
-        x_var = "STRATEGIES",
-        x_order = ORDER_STRATS,
-        fill_var = "NEW_SAMPLE_SIZES",
+        x_var = "NEW_SAMPLE_SIZES",
+        fill_var = "STRATEGIES",
+        fill_order = EFFECTS[[2]]$STRATEGIES,
+        color_order = ORDER_STRATS, 
         panel_var = "subset",
         panel_order = SUBSETS_PLOT,
-        group_species = TRUE,
         save_to = file.path(ANALYSES_PATH, "MSE_delta_n_sp.pdf")
 )
+print(violin_D_mse$plot)
+
 
 
 ##### MAPS ###### -------------------------------------------------------------
@@ -401,9 +463,5 @@ for (m in names(dist_metrics)) {
 all_datasets <- unwrap_simulations(
     readRDS(file = file.path(RESULTS_PATH, "datasets.rds")))
 show_map_selected_new_pool(complete_new_pool = all_datasets[[1]]$new_pool)
-
-
-##### SAMPLED VARIABLES ###### ------------------------------------------------
-show_new_pool_distributions(complete_new_pool = all_datasets[[1]]$new_pool)
 
 cli_alert_success("Analysis of HMSC is complete!\n\n")

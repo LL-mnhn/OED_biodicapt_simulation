@@ -24,20 +24,20 @@ if (file.exists(file.path("data", "config", "seed.R"))) {
     source(here::here(file.path("data", "config", "seed.R"))) 
 }
 
-RES_MODE <- "raw"
-
 
 ##### Local functions ##### ---------------------------------------------------
-quick_standardised_projections <- function(path_raster, basename_path, mode = "mean") {
-    . <- standardized_raster_projection(
-        raster_path = path_raster,
-        save_to_basename = basename_path)
-    . <- standardized_hexagonal_projection(
-        raster_path = path_raster,
-        save_to_basename = basename_path,
-        extraction_mode = mode)    
+check_raster_standardised_raster_projection <- function(
+        raster_path, save_to_basename) {
+    if (!authorise_overwrite(save_to_basename)) {
+        # Check if file exists
+        cli_alert_warning("Skipping STOC pre-processing.\n\n")
+    } else {
+        raster_standardised_raster_projection(
+            raster_path = raster_path,
+            save_to_basename = save_to_basename)
+    }
 }
-
+         
 preprocess_stoc_dataset <- function(
     cols_to_remove = c(
         "NDVI", "light_pollution", "precip_spring", "tmp_spring", "p_type", 
@@ -97,8 +97,27 @@ save_elevation_over_zero <- function() {
     # (we're not interested about whatever is under sea level)
     over_zero_raster <- clamp(base_elevation_raster, lower = 0, values = TRUE)
 
-    # save new raster
-    writeRaster(over_zero_raster, ELEVATION_PATH_PREPROCESSED, overwrite = TRUE)
+    # Save with buffer 
+    clip_raster_to_france_shape(
+        over_zero_raster, save_to = ELEVATION_PATH_PREPROCESSED)
+}
+
+preprocess_light_pollution  <- function() {
+    # Pre-cropping
+    cropped_pollution <- clip_raster_to_france_shape(
+        rast(LIGHT_POLLUTION_FILEPATH),  
+        buffer = BUFFER_SIZE*1.25,  # because not reprojected yet
+        fill_missing = FALSE,       # wjole world, nothing is missing.
+        save_to = NULL)
+
+    # Project to PROJECT_CRS
+    cropped_projected_pollution <- project(cropped_pollution, PROJECT_CRS)
+    
+    # Saving 
+    clip_raster_to_france_shape(
+        cropped_projected_pollution, 
+        fill_missing = FALSE,
+        save_to = LIGHT_POLLUTION_PATH_PREPROCESSED)
 }
 
 show_save_results <- function() {
@@ -108,86 +127,125 @@ show_save_results <- function() {
         MAPS_PATH, "' ."))
     dir.create(MAPS_PATH, recursive = TRUE)
 
-    # I'm only showing hexagonal projections by default
     # 1. Corine Land Cover Dataset
     # shapefile  
-    corine_shapefile <- st_read(
-        paste0(CORINE_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-        quiet = TRUE)
-    corine_shapefile_colors <- read_csv(
-        paste0(CORINE_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            "_NEW_LABEL3.csv"),
-        show_col_types = FALSE)
-    corine_plot_bis <- ggplot_categorical_shapefile_on_background_map(
+    corine_plot_bis <- ggplot_categorical_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        shapefile = corine_shapefile,
-        layer_name = "NEW_LABEL3",
-        color_df = corine_shapefile_colors)
+        rast = clip_raster_to_france_shape(
+            rast(CORINE_PATH_PREPROCESSED), 
+            buffer = 0),
+        layer_name = "NEW_LABEL3")
     print(corine_plot_bis)
     standardised_ggplot_save(
         figure = corine_plot_bis, 
-        save_path = file.path(MAPS_PATH, "corine_hexagons.pdf"))   
-    
-    corine_shapefile <- fix_names(corine_shapefile)
-    
-    for (variable in names(corine_shapefile)) {
-        if (!grepl("distance", variable)) {
-            next
-        }
-        corine_plot_quanti <- ggplot_quantitative_shapefile_on_background_map(
-            background_map = ggplot_get_france_base_map("national"), 
-            shapefile = corine_shapefile,
-            layer_name = variable,
-            unit = paste0(
-                "Distance (m)\nto closest ",
-                paste(tolower(str_split(variable, "\\.")[[1]][-(1:2)]), collapse = " ")
-            )
-        )
-        print(corine_plot_quanti)
-        standardised_ggplot_save(
-            figure = corine_plot_bis, 
-            save_path = file.path(
-                MAPS_PATH, 
-                paste0(
-                    "corine_hexagons_distance-to-", 
-                    paste(tolower(str_split(variable, "\\.")[[1]][-(1:2)]), collapse = "-"),
-                    ".pdf")))  
-    }
+        save_path = file.path(MAPS_PATH, "corine.pdf"))   
     
     # 2. chelsa datasets
     for (i in 1:length(CHELSA_DATASETS)) {
-        # shapefile  
-        chelsa_shapefile <- st_read(
-            paste0(CHELSA_PROJECTION_BASEPATHS[i], 
-                "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-            quiet = TRUE)
-        chelsa_plot_bis <- ggplot_quantitative_shapefile_on_background_map(
+        r <- rast(file.path(CHELSA_PATHS_PREPROCESSED[i]))
+        chelsa_plot_bis <- ggplot_quantitative_raster_on_background_map(
             background_map = ggplot_get_france_base_map("national"), 
-            shapefile = chelsa_shapefile,
+            raster = clip_raster_to_france_shape(r, buffer = 0),
             layer_name = "mean",
-            unit=CHELSA_UNITS[i],
-            limits=NULL,
+            transform_scale = list(
+                                    "identity", 
+                                    "sqrt", 
+                                    mirrored_log_trans(offset_high = 294)
+                              )[[i]],
+            unit = CHELSA_UNITS[i],
+            limits = NULL,
             precision_auto_limits = 0.1)
         print(chelsa_plot_bis)
         standardised_ggplot_save(
             figure = chelsa_plot_bis, 
             save_path = file.path(MAPS_PATH, 
-                paste0("chelsa_", CHELSA_DATASETS[i], "_hexagons.pdf")))    
+                paste0("chelsa_", CHELSA_DATASETS[i], ".pdf")))    
     }
 
-    # 3. stoc dataset
+    # 3. SWF
+    r <- rast(file.path(SWF_PATH_PREPROCESSED))
+    swf_plot_bis <- ggplot_quantitative_raster_on_background_map(
+        background_map = ggplot_get_france_base_map("national"), 
+        raster = clip_raster_to_france_shape(r, buffer = 0),
+        transform_scale = "identity",
+        layer_name = "swf_2018_100m_03035_v1_0",
+        unit = "%",
+        limits = NULL,
+        precision_auto_limits = 0.1)
+    print(swf_plot_bis)
+    standardised_ggplot_save(
+        figure = swf_plot_bis, 
+        save_path = file.path(MAPS_PATH, "swf.pdf"))   
+
+    # 4. NDVI
+    r <- rast(file.path(NDVI_PATH_PREPROCESSED))
+    ndvi_plot_bis <- ggplot_quantitative_raster_on_background_map(
+        background_map = ggplot_get_france_base_map("national"), 
+        raster = clip_raster_to_france_shape(r*100, buffer = 0),
+        transform_scale = "identity",
+        layer_name = "mean",
+        unit = "%",
+        limits = NULL,
+        precision_auto_limits = 0.1)
+    print(ndvi_plot_bis)
+    standardised_ggplot_save(
+        figure = ndvi_plot_bis, 
+        save_path = file.path(MAPS_PATH, "ndvi.pdf"))   
+
+    # 5. Elevation
+    r <- rast(file.path(ELEVATION_PATH_PREPROCESSED))
+    elev_plot_bis <- ggplot_quantitative_raster_on_background_map(
+        background_map = ggplot_get_france_base_map("national"), 
+        raster = clip_raster_to_france_shape(r, buffer = 0),
+        transform_scale = "sqrt",
+        layer_name = "fileef5d34834802",
+        unit = "m",
+        limits = NULL,
+        precision_auto_limits = 0.1)
+    print(elev_plot_bis)
+    standardised_ggplot_save(
+        figure = elev_plot_bis, 
+        save_path = file.path(MAPS_PATH, "elevation.pdf"))   
+
+    # light_pollution
+    r <- rast(file.path(LIGHT_POLLUTION_PATH_PREPROCESSED))
+    light_plot_bis <- ggplot_quantitative_raster_on_background_map(
+        background_map = ggplot_get_france_base_map("national"), 
+        raster = clip_raster_to_france_shape(r, buffer = 0),
+        transform_scale = "sqrt",
+        layer_name = "harmonized_dn_ntl_2018_simviirs",
+        unit = "DN",
+        limits = NULL,
+        precision_auto_limits = 0.1)
+    print(light_plot_bis)
+    standardised_ggplot_save(
+        figure = light_plot_bis, 
+        save_path = file.path(MAPS_PATH, "light_pollution.pdf"))   
+    
+    # pesticides
+    r <- rast(file.path(PESTICIDE_PATH_PREPROCESSED))
+    pest_plot_bis <- ggplot_quantitative_raster_on_background_map(
+        background_map = ggplot_get_france_base_map("national"), 
+        raster = clip_raster_to_france_shape(r, buffer = 0),
+        transform_scale = "sqrt",
+        layer_name = "mean_tii",
+        unit = "eTII",
+        limits = NULL,
+        precision_auto_limits = 0.1)
+    print(pest_plot_bis)
+    standardised_ggplot_save(
+        figure = pest_plot_bis, 
+        save_path = file.path(MAPS_PATH, "pesticides.pdf"))   
+
+    # X. stoc dataset
     stoc_df <- vect(STOC_OBS_FULL)
     cli_alert_warning(paste("Stoc dataset: sampling locations"))
 
     stoc_plot <- ggplot_categorical_df_on_background_map(
         background_map = ggplot_get_france_base_map("regional"), 
         df = as.data.frame(stoc_df), 
-        lon_c = "LON",
-        lat_c = "LAT",
+        lon_c = "lon",
+        lat_c = "lat",
         col = PALETTE[3],
         legend_title = "Sampling locations of STOC ")
     print(stoc_plot)
@@ -197,94 +255,15 @@ show_save_results <- function() {
             MAPS_PATH, 
             "stoc_sampling_locations_.pdf"))
 
-    # 4. NDVI dataset
-    # shapefile  
-    ndvi_shapefile <- st_read(
-        paste0(NDVI_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-        quiet = TRUE)
-    ndvi_plot_bis <- ggplot_quantitative_shapefile_on_background_map(
-        background_map = ggplot_get_france_base_map("national"), 
-        shapefile = ndvi_shapefile,
-        layer_name = "mean",
-        unit="Index",
-        limits=NULL,
-        precision_auto_limits = 0.1)
-    print(ndvi_plot_bis)
-    standardised_ggplot_save(
-        figure = ndvi_plot_bis, 
-        save_path = file.path(MAPS_PATH, paste0("NDVI_hexagons.pdf"))) 
-
-
-    # 5. Elevation dataset
-    # shapefile  
-    elev_shapefile <- st_read(
-        paste0(ELEVATION_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-        quiet = TRUE)
-    elev_plot_bis <- ggplot_quantitative_shapefile_on_background_map(
-        background_map = ggplot_get_france_base_map("national"), 
-        shapefile = elev_shapefile,
-        layer_name = "file1254937095365",
-        unit="m",
-        limits=NULL,
-        precision_auto_limits = 0.1)
-    print(elev_plot_bis)
-    standardised_ggplot_save(
-        figure = elev_plot_bis, 
-        save_path = file.path(MAPS_PATH, paste0("elevation_hexagons.pdf"))) 
-
-    # 6. Light pollution dataset
-    # shapefile  
-    light_shapefile <- st_read(
-        paste0(LIGHT_POLLUTION_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-        quiet = TRUE)
-    light_plot_bis <- ggplot_quantitative_shapefile_on_background_map(
-        background_map = ggplot_get_france_base_map("national"), 
-        shapefile = light_shapefile,
-        layer_name = "Harmonized_DN_NTL_2018_simVIIRS",
-        unit="DN",
-        limits=NULL,
-        precision_auto_limits = 0.1)
-    print(light_plot_bis)
-    standardised_ggplot_save(
-        figure = light_plot_bis, 
-        save_path = file.path(
-            MAPS_PATH, paste0("light_pollution_hexagons.pdf")))    
-
-    # 7. SWF dataset
-    # shapefile  
-    swf_shapefile <- st_read(
-        paste0(SWF_PROJECTION_BASEPATH, 
-            "_projection_france_hexagons_res", RES_KM, "km-", PROJECT_CRS_TAG,
-            ".gpkg"),
-        quiet = TRUE)
-    swf_plot_bis <- ggplot_quantitative_shapefile_on_background_map(
-        background_map = ggplot_get_france_base_map("national"), 
-        shapefile = swf_shapefile,
-        layer_name = "SWF_2018_100m_03035_V1_0",
-        unit="%",
-        limits=NULL,
-        precision_auto_limits = 0.1)
-    print(swf_plot_bis)
-    standardised_ggplot_save(
-        figure = swf_plot_bis, 
-        save_path = file.path(
-            MAPS_PATH, paste0("SWF_hexagons.pdf"))) 
-
-    # 8. biodicapt dataset
+    # XX. biodicapt dataset
     biodicapt_df <- vect(BIODICAPT_OBS_FULL)
     cli_alert_warning(paste("Biodicapt dataset: sampling locations"))
 
     biodicapt_plot <- ggplot_categorical_df_on_background_map(
         background_map = ggplot_get_france_base_map("regional"), 
         df = as.data.frame(biodicapt_df), 
-        lon_c = "LON",
-        lat_c = "LAT",
+        lon_c = "lon",
+        lat_c = "lat",
         col = PALETTE[1],
         legend_title = "Sampling locations of BIODICAPT")
     print(biodicapt_plot)
@@ -294,15 +273,15 @@ show_save_results <- function() {
             MAPS_PATH, 
             "biodicapt_sampling_locations_.pdf"))
 
-    # 9. biodicapt dataset
+    # XXX. 500 ENI dataset
     eni500_df <- vect(ENI500_OBS_FULL)
     cli_alert_warning(paste("500 ENI dataset: sampling locations"))
 
     eni500_plot <- ggplot_categorical_df_on_background_map(
         background_map = ggplot_get_france_base_map("regional"), 
         df = as.data.frame(eni500_df), 
-        lon_c = "LON",
-        lat_c = "LAT",
+        lon_c = "lon",
+        lat_c = "lat",
         col = PALETTE[2],
         legend_title = "Sampling locations of 500 ENI")
     print(eni500_plot)
@@ -357,18 +336,16 @@ import_eni500_csv <- function(
 ##### Transformation of raw datasets ##### ------------------------------------
 if (exists("BLUR_SEED")) {
     # 1. Corine Land Cover dataset
+    # WARNING: using "near" and not "mode" to gain some time, might not be as 
+    # precise but categorical data will not be re-used in model, it is just for
+    # visualisation purposes.
     cli_alert_info("Preprocessing CLC dataset...")
     . <- save_simplified_clc(
         raster_path = CORINE_FILEPATH,
         save_to = CORINE_PATH_PREPROCESSED)
-    . <- standardized_raster_projection(
+    . <- check_raster_standardised_raster_projection(
         raster_path = CORINE_PATH_PREPROCESSED,
         save_to_basename = CORINE_PROJECTION_BASEPATH)
-    # Show only the categories on the hexagonal projection, saved time
-    . <- standardized_hexagonal_projection(
-        raster_path = rast(CORINE_PATH_PREPROCESSED)[["NEW_LABEL3"]],
-        save_to_basename = CORINE_PROJECTION_BASEPATH,
-        extraction_mode = "mean") 
 
     # 2. Chelsa dataset 
     cli_alert_info("Preprocessing CHELSA dataset...")
@@ -376,11 +353,10 @@ if (exists("BLUR_SEED")) {
         cli_alert_info(paste("Preprocessing", CHELSA_DATASETS[i], "dataset..."))
         . <- average_monthly_quantitative_rasters(
             folder_path = CHELSA_DATASETS_PATHS[i],
-            save_to = CHELSA_ANNUAL_PATHS[i])
-        . <- quick_standardised_projections(
-            path_raster = CHELSA_ANNUAL_PATHS[i],
-            basename_path = CHELSA_PROJECTION_BASEPATHS[i],
-            mode = "mean")
+            save_to = CHELSA_PATHS_PREPROCESSED[i])
+        . <- check_raster_standardised_raster_projection(
+            raster_path = CHELSA_PREPROCESSED_PATHS[i],
+            save_to_basename = CHELSA_PROJECTION_BASEPATHS[i])
     }
 
     # 3. Stoc dataset
@@ -389,66 +365,75 @@ if (exists("BLUR_SEED")) {
 
     # 4. Small Woody Features dataset
     cli_alert_info("Preprocessing SWF dataset...")
-    . <- add_buffer_to_raster(
-        raster_path = SWF_FILEPATH, 
-        replace_with = 0, 
-        save_to = SWF_PATH_PREPROCESSED)
-    . <- quick_standardised_projections(
-        path_raster = SWF_PATH_PREPROCESSED,
-        basename_path = SWF_PROJECTION_BASEPATH,
-        mode = "mean")    
+    # Add buffer
+    . <- clip_raster_to_france_shape(
+            subst(rast(SWF_FILEPATH), NA, 0), 
+            fill_missing = TRUE,
+            save_to = SWF_PATH_PREPROCESSED)
+    . <- check_raster_standardised_raster_projection(
+        raster_path = SWF_PATH_PREPROCESSED,
+        save_to_basename = SWF_PROJECTION_BASEPATH)    
 
     # 5. NDVI dataset
     cli_alert_info("Preprocessing NDVI dataset...")
     . <- average_monthly_quantitative_rasters(
         folder_path = NASA_NDVI_FOLDER,
-        save_to = NDVI_ANNUAL_PATH)
-    . <- quick_standardised_projections(
-        path_raster = NDVI_ANNUAL_PATH,
-        basename_path = NDVI_PROJECTION_BASEPATH,
-        mode = "mean")    
+        save_to = NDVI_PATH_PREPROCESSED)
+    . <- check_raster_standardised_raster_projection(
+        raster_path = NDVI_PATH_PREPROCESSED,
+        save_to_basename = NDVI_PROJECTION_BASEPATH)    
 
     # 6. Elevation dataset
     cli_alert_info("Preprocessing Elevation dataset...")
     . <- save_elevation_over_zero()
-    . <- quick_standardised_projections(
-        path_raster = ELEVATION_PATH_PREPROCESSED,
-        basename_path = ELEVATION_PROJECTION_BASEPATH,
-        mode = "mean")    
+    . <- check_raster_standardised_raster_projection(
+        raster_path = ELEVATION_PATH_PREPROCESSED,
+        save_to_basename = ELEVATION_PROJECTION_BASEPATH)    
     
     # 7. Light pollution dataset
     cli_alert_info("Preprocessing Light pollution dataset...")
-    . <- quick_standardised_projections(
-        path_raster = LIGHT_POLLUTION_FILEPATH,
-        basename_path = LIGHT_POLLUTION_PROJECTION_BASEPATH,
-        mode = "mean")    
-   
-    
+    . <- preprocess_light_pollution()
+    . <- check_raster_standardised_raster_projection(
+        raster_path = LIGHT_POLLUTION_PATH_PREPROCESSED,
+        save_to_basename = LIGHT_POLLUTION_PROJECTION_BASEPATH)    
+
+    # 8. Pesticides use dataset
+    cli_alert_info("Preprocessing pesticides use dataset...")
+    . <- rasterise_to_france_grid(
+            vector = vect(PESTICIDE_FILEPATH)["mean_tii"], 
+            layer_name = "mean_tii",
+            save_to = PESTICIDE_PATH_PREPROCESSED,  
+            res_km = 0.1) 
+    . <- check_raster_standardised_raster_projection(
+        raster_path = PESTICIDE_PATH_PREPROCESSED,
+        save_to_basename = PESTICIDE_PROJECTION_BASEPATH)
+
+
 ##### Assemble rasters ##### --------------------------------------------------
     cli_alert_info("Assembling rasters/shp together")
     . <- create_master_files_features(FEATURES_RAW_FULL, mode = "raw")
     . <- create_master_files_features(FEATURES_RES_FULL, mode = "raster")
-    cli_alert_success("Multi-layer rasters/shp ready!")   
+    cli_alert_success("Multi-layer rasters/shp ready!")
 
     
 ##### Add features to df ##### ------------------------------------------------
     cli_alert_info(paste0("Extracting features (res_mode = ", RES_MODE, ")."))
     . <- save_features_from_obs(
-        file = import_biodicapt_csv(), 
+        file = import_biodicapt_csv(),
+        raster_path = FEATURES_RAW_FULL,
         save_to = BIODICAPT_OBS_FULL,
-        mode = RES_MODE,
         blur = TRUE)
 
     . <- save_features_from_obs(
-        file = import_eni500_csv(), 
+        file = import_eni500_csv(),
+        raster_path = FEATURES_RAW_FULL,
         save_to = ENI500_OBS_FULL,
-        mode = RES_MODE,
         blur = TRUE)
 
     . <- save_features_from_obs(
-        file = STOC_PATH_PREPROCESSED, 
+        file = STOC_PATH_PREPROCESSED,
+        raster_path = FEATURES_RAW_FULL,
         save_to = STOC_OBS_FULL,
-        mode = RES_MODE,
         blur = FALSE)
 
 } else {

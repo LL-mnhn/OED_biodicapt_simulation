@@ -5040,52 +5040,6 @@
       "Maintainer": "Baptiste Auguie <baptiste.auguie@gmail.com>",
       "Repository": "CRAN"
     },
-    "gstat": {
-      "Package": "gstat",
-      "Version": "2.1-6",
-      "Source": "Repository",
-      "Title": "Spatial and Spatio-Temporal Geostatistical Modelling, Prediction and Simulation",
-      "Authors@R": "c(person(given = \"Edzer\",  family = \"Pebesma\",  role = c(\"aut\", \"cre\"), email = \"edzer.pebesma@uni-muenster.de\", comment = c(ORCID = \"0000-0001-8049-7069\")), person(\"Benedikt\", \"Graeler\", role = \"aut\"))",
-      "Description": "Variogram modelling; simple, ordinary and universal point or block (co)kriging; spatio-temporal kriging; sequential Gaussian or indicator (co)simulation; variogram and variogram map plotting utility functions; supports sf and stars.",
-      "Depends": [
-        "R (>= 2.10)"
-      ],
-      "Imports": [
-        "utils",
-        "stats",
-        "graphics",
-        "methods",
-        "lattice",
-        "sp (>= 0.9-72)",
-        "zoo",
-        "sf (>= 0.7-2)",
-        "sftime",
-        "spacetime (>= 1.2-8)",
-        "stars",
-        "FNN"
-      ],
-      "Suggests": [
-        "fields",
-        "maps",
-        "mapdata",
-        "xts",
-        "raster",
-        "future",
-        "future.apply",
-        "RColorBrewer",
-        "geoR",
-        "ggplot2"
-      ],
-      "License": "GPL (>= 2.0)",
-      "URL": "https://github.com/r-spatial/gstat/, https://r-spatial.github.io/gstat/",
-      "Encoding": "UTF-8",
-      "BugReports": "https://github.com/r-spatial/gstat/issues/",
-      "NeedsCompilation": "yes",
-      "RoxygenNote": "6.1.1",
-      "Author": "Edzer Pebesma [aut, cre] (ORCID: <https://orcid.org/0000-0001-8049-7069>), Benedikt Graeler [aut]",
-      "Maintainer": "Edzer Pebesma <edzer.pebesma@uni-muenster.de>",
-      "Repository": "CRAN"
-    },
     "gtable": {
       "Package": "gtable",
       "Version": "0.3.6",
@@ -5706,30 +5660,6 @@
       "Config/roxygen2/version": "8.0.0",
       "NeedsCompilation": "no",
       "Author": "Daniel Lüdecke [aut, cre] (ORCID: <https://orcid.org/0000-0002-8895-3206>), Dominique Makowski [aut, ctb] (ORCID: <https://orcid.org/0000-0001-5375-9967>), Indrajeet Patil [aut, ctb] (ORCID: <https://orcid.org/0000-0003-1995-6531>), Philip Waggoner [aut, ctb] (ORCID: <https://orcid.org/0000-0002-7825-7573>), Mattan S. Ben-Shachar [aut, ctb] (ORCID: <https://orcid.org/0000-0002-4287-4801>), Brenton M. Wiernik [aut, ctb] (ORCID: <https://orcid.org/0000-0001-9560-6336>), Vincent Arel-Bundock [aut, ctb] (ORCID: <https://orcid.org/0000-0003-2042-7063>), Etienne Bacher [aut, ctb] (ORCID: <https://orcid.org/0000-0002-9271-5075>), Alex Hayes [rev] (ORCID: <https://orcid.org/0000-0002-4985-5160>), Grant McDermott [ctb] (ORCID: <https://orcid.org/0000-0001-7883-8573>), Rémi Thériault [ctb] (ORCID: <https://orcid.org/0000-0003-4315-6788>), Alex Reinhart [ctb] (ORCID: <https://orcid.org/0000-0002-6658-514X>)",
-      "Repository": "CRAN"
-    },
-    "intervals": {
-      "Package": "intervals",
-      "Version": "0.15.5",
-      "Source": "Repository",
-      "Type": "Package",
-      "Title": "Tools for Working with Points and Intervals",
-      "Authors@R": "c(person(given = \"Richard\", family = \"Bourgon\", role = \"aut\", email = \"bourgon.richard@gene.com\"), person(given = \"Edzer\", family = \"Pebesma\", role = \"cre\", email = \"edzer.pebesma@uni-muenster.de\"))",
-      "Depends": [
-        "R (>= 2.9.0)"
-      ],
-      "Imports": [
-        "utils",
-        "graphics",
-        "methods"
-      ],
-      "Description": "Tools for working with and comparing sets of points and intervals.",
-      "License": "Artistic-2.0",
-      "LazyLoad": "yes",
-      "URL": "https://github.com/edzer/intervals",
-      "NeedsCompilation": "yes",
-      "Author": "Richard Bourgon [aut], Edzer Pebesma [cre]",
-      "Maintainer": "Edzer Pebesma <edzer.pebesma@uni-muenster.de>",
       "Repository": "CRAN"
     },
     "ipred": {
@@ -9708,51 +9638,6 @@
       "Maintainer": "Edzer Pebesma <edzer.pebesma@uni-muenster.de>",
       "Repository": "CRAN"
     },
-    "sftime": {
-      "Package": "sftime",
-      "Version": "0.3.2",
-      "Source": "Repository",
-      "Title": "Classes and Methods for Simple Feature Objects that Have a Time Column",
-      "Description": "Classes and methods for spatial objects that have a registered time  column, in particular for irregular spatiotemporal data. The time column can  be of any type, but needs to be ordinal. Regularly laid out spatiotemporal  data (vector or raster data cubes) are handled by package 'stars'.",
-      "Depends": [
-        "R (>= 4.1.0)",
-        "sf (>= 1.0.9)"
-      ],
-      "Imports": [
-        "methods"
-      ],
-      "Suggests": [
-        "knitr",
-        "spacetime",
-        "rmarkdown",
-        "dplyr (>= 0.8-3)",
-        "trajectories (>= 0.2.2)",
-        "stars",
-        "ncmeta",
-        "tidyr",
-        "ggplot2",
-        "sp",
-        "rlang",
-        "vctrs",
-        "spatstat.geom",
-        "spatstat.linnet",
-        "sftrack",
-        "cubble (>= 0.3.0)"
-      ],
-      "Authors@R": "c(person(given = \"Henning\", family = \"Teickner\", role = c(\"aut\", \"cre\", \"cph\"), email = \"henning.teickner@uni-muenster.de\", comment = c(ORCID = \"0000-0002-3993-1182\")), person(given = \"Edzer\", family = \"Pebesma\", role = c(\"aut\", \"cph\"), email = \"edzer.pebesma@uni-muenster.de\", comment = c(ORCID = \"0000-0001-8049-7069\")), person(given = \"Benedikt\", family = \"Graeler\", role = c(\"aut\", \"cph\"), email = \"b.graeler@52north.org\", comment = c(ORCID = \"0000-0001-5443-4304\")))",
-      "License": "Apache License",
-      "Type": "Package",
-      "Encoding": "UTF-8",
-      "VignetteBuilder": "knitr",
-      "RoxygenNote": "7.3.3",
-      "URL": "https://r-spatial.github.io/sftime/, https://github.com/r-spatial/sftime",
-      "BugReports": "https://github.com/r-spatial/sftime/issues/",
-      "Collate": "sftime.R init.R join.R plot.R st_cast.R st_geometry.R st_time.R tidyverse.R bind.R crop.R geom-transformers.R",
-      "NeedsCompilation": "no",
-      "Author": "Henning Teickner [aut, cre, cph] (ORCID: <https://orcid.org/0000-0002-3993-1182>), Edzer Pebesma [aut, cph] (ORCID: <https://orcid.org/0000-0001-8049-7069>), Benedikt Graeler [aut, cph] (ORCID: <https://orcid.org/0000-0001-5443-4304>)",
-      "Maintainer": "Henning Teickner <henning.teickner@uni-muenster.de>",
-      "Repository": "CRAN"
-    },
     "shape": {
       "Package": "shape",
       "Version": "1.4.6.1",
@@ -10069,59 +9954,6 @@
       "Repository": "https://packagemanager.posit.co/cran/__linux__/noble/latest",
       "Encoding": "UTF-8"
     },
-    "spacetime": {
-      "Package": "spacetime",
-      "Version": "1.3-3",
-      "Source": "Repository",
-      "Title": "Classes and Methods for Spatio-Temporal Data",
-      "Authors@R": "c(person(\"Edzer\",  \"Pebesma\", role = c(\"aut\", \"cre\"), email = \"edzer.pebesma@uni-muenster.de\", comment = c(ORCID = \"0000-0001-8049-7069\")), person(\"Benedikt\", \"Graeler\", role = \"ctb\"), person(\"Tom\", \"Gottfried\", role = \"ctb\"), person(\"Robert J.\", \"Hijmans\", role = \"ctb\"))",
-      "Depends": [
-        "R (>= 3.0.0)"
-      ],
-      "Imports": [
-        "graphics",
-        "utils",
-        "stats",
-        "methods",
-        "lattice",
-        "sp (>= 1.1-0)",
-        "zoo (>= 1.7-9)",
-        "xts (>= 0.8-8)",
-        "intervals"
-      ],
-      "Suggests": [
-        "adehabitatLT",
-        "cshapes (>= 2.0)",
-        "foreign",
-        "googleVis",
-        "gstat (>= 1.0-16)",
-        "maps",
-        "mapdata",
-        "plm",
-        "raster",
-        "RColorBrewer",
-        "rmarkdown",
-        "RPostgreSQL",
-        "knitr",
-        "ISOcodes",
-        "markdown",
-        "sf",
-        "sftime",
-        "spdep"
-      ],
-      "LazyData": "no",
-      "Description": "Classes and methods for spatio-temporal data, including space-time regular lattices, sparse lattices, irregular data, and trajectories; utility functions for plotting data as map sequences (lattice or animation) or multiple time series; methods for spatial and temporal selection and subsetting, as well as for spatial/temporal/spatio-temporal matching or aggregation, retrieving coordinates, print, summary, etc.",
-      "License": "GPL (>= 2)",
-      "URL": "https://github.com/edzer/spacetime",
-      "BugReports": "https://github.com/edzer/spacetime/issues",
-      "Encoding": "UTF-8",
-      "VignetteBuilder": "knitr",
-      "Collate": "Class-xts.R Class-ST.R Class-STFDF.R Class-STSDF.R Class-STIDF.R Class-STTDF.R interval.R endtime.R ST-methods.R STFDF-methods.R STSDF-methods.R STIDF-methods.R STTDF-methods.R apply.R coerce.R stconstruct.R plot.R stplot.R timematch.R over.R aggregate.R eof.R mnf.R bind.R na.R raster.R tgrass.R stinteraction.R",
-      "NeedsCompilation": "no",
-      "Author": "Edzer Pebesma [aut, cre] (<https://orcid.org/0000-0001-8049-7069>), Benedikt Graeler [ctb], Tom Gottfried [ctb], Robert J. Hijmans [ctb]",
-      "Maintainer": "Edzer Pebesma <edzer.pebesma@uni-muenster.de>",
-      "Repository": "CRAN"
-    },
     "spam": {
       "Package": "spam",
       "Version": "2.11-4",
@@ -10199,85 +10031,6 @@
       "NeedsCompilation": "yes",
       "Author": "Emil Hvitfeldt [aut, cre] (ORCID: <https://orcid.org/0000-0002-0679-1945>), Davis Vaughan [ctb], Posit Software, PBC [cph, fnd] (ROR: <https://ror.org/03wc8by49>)",
       "Maintainer": "Emil Hvitfeldt <emil.hvitfeldt@posit.co>",
-      "Repository": "CRAN"
-    },
-    "stars": {
-      "Package": "stars",
-      "Version": "0.7-2",
-      "Source": "Repository",
-      "Title": "Spatiotemporal Arrays, Raster and Vector Data Cubes",
-      "Authors@R": "c(person(given = \"Edzer\", family = \"Pebesma\", role = c(\"aut\", \"cre\"), email = \"edzer.pebesma@uni-muenster.de\", comment = c(ORCID = \"0000-0001-8049-7069\")), person(given = \"Michael\", family = \"Sumner\", role = \"ctb\",  comment=c(ORCID = \"0000-0002-2471-7511\")), person(given = \"Etienne\", family = \"Racine\", role = \"ctb\"), person(given = \"Adriano\", family = \"Fantini\", role = \"ctb\"),  person(given = \"David\",  family = \"Blodgett\",  role = \"ctb\"),  person(given = \"Krzysztof\",  family = \"Dyba\",  role = \"ctb\", comment=c(ORCID = \"0000-0002-8614-3816\")))",
-      "Description": "Reading, manipulating, writing and plotting spatiotemporal arrays (raster and vector data cubes) in 'R', using 'GDAL' bindings provided by 'sf', and 'NetCDF' bindings by 'ncmeta' and 'RNetCDF'.",
-      "License": "Apache License",
-      "URL": "https://r-spatial.github.io/stars/, https://github.com/r-spatial/stars/",
-      "BugReports": "https://github.com/r-spatial/stars/issues/",
-      "Additional_repositories": "https://cran.uni-muenster.de/pebesma/",
-      "LazyData": "true",
-      "Depends": [
-        "R (>= 4.1.0)",
-        "abind",
-        "sf (>= 1.0-19)"
-      ],
-      "Imports": [
-        "methods",
-        "parallel",
-        "classInt (>= 0.4-1)",
-        "rlang",
-        "units"
-      ],
-      "Suggests": [
-        "Cairo",
-        "CFtime (>= 1.7.1)",
-        "OpenStreetMap",
-        "RNetCDF (>= 1.8-2)",
-        "clue",
-        "covr",
-        "cubble (>= 0.3.0)",
-        "cubelyr",
-        "digest",
-        "dplyr (>= 0.7-0)",
-        "exactextractr",
-        "FNN",
-        "future.apply",
-        "ggforce",
-        "ggplot2",
-        "ggthemes",
-        "gstat",
-        "httr",
-        "jsonlite",
-        "knitr",
-        "lwgeom",
-        "maps",
-        "mapdata",
-        "ncdfCF",
-        "ncdfgeom",
-        "ncmeta (>= 0.0.3)",
-        "pbapply",
-        "plm",
-        "randomForest",
-        "raster",
-        "rmarkdown",
-        "sp",
-        "spacetime",
-        "spatstat (>= 2.0-1)",
-        "spatstat.geom",
-        "starsdata",
-        "terra (>= 1.4-22)",
-        "testthat",
-        "tibble",
-        "tidyr",
-        "tsibble",
-        "viridis",
-        "xts",
-        "zoo"
-      ],
-      "VignetteBuilder": "knitr",
-      "Encoding": "UTF-8",
-      "RoxygenNote": "7.3.3",
-      "Collate": "'aggregate.R' 'cf.R' 'cubble.R' 'datasets.R' 'dimensions.R' 'extract.R' 'factors.R' 'geom.R' 'gt.R' 'init.R' 'intervals.R' 'mdim.R' 'mosaic.R' 'ncdf.R' 'ncproxy.R' 'OpenStreetMap.R' 'ops.R' 'plot.R' 'prcomp.R' 'proxy.R' 'rasterize.R' 'raster.R' 'read.R' 'rotate.R' 'sample.R' 'sf.R' 'spacetime.R' 'spatstat.R' 'sp.R' 'stars.R' 'subset.R' 'tidyverse.R' 'tile.R' 'transform.R' 'values.R' 'warp.R' 'write.R' 'xts.R'",
-      "NeedsCompilation": "no",
-      "Author": "Edzer Pebesma [aut, cre] (ORCID: <https://orcid.org/0000-0001-8049-7069>), Michael Sumner [ctb] (ORCID: <https://orcid.org/0000-0002-2471-7511>), Etienne Racine [ctb], Adriano Fantini [ctb], David Blodgett [ctb], Krzysztof Dyba [ctb] (ORCID: <https://orcid.org/0000-0002-8614-3816>)",
-      "Maintainer": "Edzer Pebesma <edzer.pebesma@uni-muenster.de>",
       "Repository": "CRAN"
     },
     "statmod": {
@@ -11702,41 +11455,6 @@
       "Repository": "CRAN",
       "NeedsCompilation": "no",
       "Author": "David B. Dahl [aut], David Scott [aut, cre], Charles Roosen [aut], Arni Magnusson [aut], Jonathan Swinton [aut], Ajay Shah [ctb], Arne Henningsen [ctb], Benno Puetz [ctb], Bernhard Pfaff [ctb], Claudio Agostinelli [ctb], Claudius Loehnert [ctb], David Mitchell [ctb], David Whiting [ctb], Fernando da Rosa [ctb], Guido Gay [ctb], Guido Schulz [ctb], Ian Fellows [ctb], Jeff Laake [ctb], John Walker [ctb], Jun Yan [ctb], Liviu Andronic [ctb], Markus Loecher [ctb], Martin Gubri [ctb], Matthieu Stigler [ctb], Robert Castelo [ctb], Seth Falcon [ctb], Stefan Edwards [ctb], Sven Garbade [ctb], Uwe Ligges [ctb]"
-    },
-    "xts": {
-      "Package": "xts",
-      "Version": "0.14.2",
-      "Source": "Repository",
-      "Type": "Package",
-      "Title": "eXtensible Time Series",
-      "Authors@R": "c( person(given=c(\"Jeffrey\",\"A.\"), family=\"Ryan\", role=c(\"aut\",\"cph\")), person(given=c(\"Joshua\",\"M.\"), family=\"Ulrich\", role=c(\"cre\",\"aut\"), email=\"josh.m.ulrich@gmail.com\"), person(given=\"Ross\", family=\"Bennett\", role=\"ctb\"), person(given=\"Corwin\", family=\"Joy\", role=\"ctb\") )",
-      "Depends": [
-        "R (>= 3.6.0)",
-        "zoo (>= 1.7-12)"
-      ],
-      "Imports": [
-        "methods"
-      ],
-      "LinkingTo": [
-        "zoo"
-      ],
-      "Suggests": [
-        "timeSeries",
-        "timeDate",
-        "tseries",
-        "chron",
-        "tinytest"
-      ],
-      "LazyLoad": "yes",
-      "Description": "Provide for uniform handling of R's different time-based data classes by extending zoo, maximizing native format information preservation and allowing for user level customization and extension, while simplifying cross-class interoperability.",
-      "License": "GPL (>= 2)",
-      "URL": "https://joshuaulrich.github.io/xts/, https://github.com/joshuaulrich/xts",
-      "BugReports": "https://github.com/joshuaulrich/xts/issues",
-      "Encoding": "UTF-8",
-      "NeedsCompilation": "yes",
-      "Author": "Jeffrey A. Ryan [aut, cph], Joshua M. Ulrich [cre, aut], Ross Bennett [ctb], Corwin Joy [ctb]",
-      "Maintainer": "Joshua M. Ulrich <josh.m.ulrich@gmail.com>",
-      "Repository": "CRAN"
     },
     "yaml": {
       "Package": "yaml",

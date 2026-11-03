@@ -19,6 +19,7 @@ data/preprocessed_data/*
 !data/preprocessed_data/RAW_2018_env-data*.tif
 !data/preprocessed_data/RAW_2018_env-data*.tif.aux.xml
 !data/preprocessed_data/HEX_2018_env-data*.gpkg
+!data/preprocessed_data/vtransform_*
 
 # Outputs results - only show 1st k-fold remove others manually
 outputs/results/model*

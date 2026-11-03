@@ -32,6 +32,7 @@ toc-location: right
 toc-depth: 4
 toc-expand: 2
 number-sections: true
+number-depth: 4
 
 bibliography: references.bib
 csl: style/vancouver.csl
@@ -65,9 +66,9 @@ format:
 
 [The key concept is that **not all observations are equally informative**.]{.mark} 
 
-This concept[^1] can be particularly interesting when working with participatory science datasets. The BIODICAPT research project, is aiming at working with voluntary participants but (due to time, logistical and budget constraint) cannot make use of all of them. In this context, pre-studying the sampling designs will allow to optimise data collection.
+This concept[^1] can be particularly interesting when working with participatory science datasets: the BIODICAPT research project is aiming at working with voluntary participants but (due to time, logistical and budget constraint) has to select only a few of them. In this context, pre-studying the sampling designs (aka which participants/locations should be selected) can be very insightfull for data collection.
 
-[^1]: Will sometimes be referred to as "adaptive sampling" in this report. 
+[^1]: Will sometimes be referred to as "adaptive sampling" in this report. Is also a concept close to "active learning" in AI models.
 
 ## The BIODICAPT project
 
@@ -76,27 +77,29 @@ The "BIODICAPT"  project is a French research project that aims at monitoring bi
 ### The BIODICAPT network
 The "BIODICAPT network" is a network of approximately 125 agricultural lands that are already in partnership with some of the research institutes and laboratories participating in the BIODICAPT project.
 
-Consequently, these fields are quite clustered around the laboratories that collect data in them periodically. 
-
-For the BIODICAPT project, additionnal data needs to be collected in order to better represent the varying agricultural contexts in France metropolitan area. In order to do this, the project aims at collecting data on a larger scale using the 500 ENI network.
+Consequently, these fields are quite clustered around the laboratories that already periodically collect data in them. 
 
 ![Positions (approximative, for confidentiality) of the fields sampled in the BIODICAPT project. *Each field belong to a zone, which is the name of the laboratory handling data collection for this zone.*](images/biodicapt_sampling_locations_.png){#fig-biodicapt width=75%}
 
-### The 500 ENI network
-The "500 ENI network" is a long-term survey that was initiated by the French Ministry of Agriculture in 2012. Its aim is to monitor any changes of wild flora and wild fauna in agricultural landscapes that could be associated with Non-Intended Effects (ENI) of agricultural practices, mainly the use of fertilisation and pesticides products.
+For the BIODICAPT project, additionnal data needs to be collected in order to better represent the varying agricultural contexts in France metropolitan area. In order to do this, the project aims at collecting data on a larger scale using the 500 ENI network.
 
-It consists of approximately 500 fields distributed over all agricultural regions of France (including Corsica) that are sampled by voluntary observers. These field were originally chosen to be representative of the main crop productions of France's metropolitan area.
+### The 500 ENI network
+The "500 ENI network" is a long-term survey that was initiated by the French Ministry of Agriculture in 2012. Its aim is to monitor any changes of wild flora and wild fauna in agricultural landscapes, that could be associated with Non-Intended Effects (ENI) of agricultural practices, mainly the use of fertilisation and pesticides products.
+
+It consists of approximately 500 fields distributed over all agricultural regions of mainland France (including Corsica), sampled yearly by voluntary observers. These field were originally chosen to be representative of the main crop productions of France's metropolitan area.
 
 ![Positions (approximative, for confidentiality) of the fields sampled in the 500 ENI network.](images/eni500_sampling_locations_.png){#fig-eni500 width=75%}
 
 ### Constraints
 The BIODICAPT project collects data on flora, using a protocol that is directly adapted from the one that has been in use in the 500 ENI network since 2012. Therefore there is no need re-sample wild flora in the 500 ENI network
 
-In addition, the BIODICAPT project also aims at using passive acoustic monitoring to identify birds, pollinators, bats and micro-mammals automatically using Song Meters Mini Bat 2 and AI tools (which are not the subject of this study). 
+In addition, the BIODICAPT project also aims at using passive acoustic monitoring to identify birds, pollinators, bats and micro-mammals automatically using Song Meters Mini Bat 2 and AI tools (which are not the subject of this study). These data are not collected (yet) within the 500 ENI network.
 
-With the available budget for the 500 ENI network, it is only possible to finance up to 50 acoustic recorders (+ accessories) for the BIODICAPT project in the 500 ENI network. Since this represents less than 10% of the whole 500 ENI network, the sampling design has to be thought of in advance. In addition, as acoustic data was not one of the initial protocols of the 500 ENI network, voluntary observers and farmers have to be motivated and give their consent in order to perform additional protocols on their lands. This means that new data collection for the BIODICAPT project is limited by budget and voluntary participation.
+With the available budget for the BIODICAPT project, it is only possible to finance up to 50 acoustic recorders (+ accessories) for the 500 ENI network. Since this represents less than 10% of the whole 500 ENI network, the sampling design has to be thought of in advance, to optimise data collection, model estimations and predictions. 
 
-## Objectives
+In addition, as acoustic data was not one of the initial protocols of the 500 ENI network, voluntary observers and farmers have to be motivated and give their consent in order to perform additional protocols on their lands. This means that new data collection for the BIODICAPT project is limited by budget and voluntary participation.
+
+## Objectives {#sec-objectives}
 This work aims at answering two questions:
 
 1. Which points, in the 500 ENI network, are the most informative in order to improve the knowledge of species distribution studied within the BIODICAPT project, given previous data collection and current constraints?
@@ -107,7 +110,7 @@ This work aims at answering two questions:
 ## Dataset
 The BIODICAPT project started in early-2026, with data collection (wild flora and passive acoustic monitoring) on agricultural plots at regular intervals between April and September. 
 
-The first results on presence-absence of target species (inferred from acoustic recordings) are expected for late-2026 to early-2027. In the meantime, sampling designs for the 500 ENI network can be explored through publicly available data and simulations. 
+The first results on presence-absence of targeted species (inferred from acoustic recordings) are expected for late-2026 to early-2027. In the meantime, sampling designs for the 500 ENI network can be explored through publicly available data and simulations. 
 
 The locations of the fields in the BIODICAPT network (~ 125 fields) and in the 500 ENI network (~ 500 fields) can be used to compute local environmental data and simulate realistic species distribution to find the best sampling designs for this project.
 
@@ -119,6 +122,7 @@ Environmental data was extracted from several sources:
 - Night time light data [@li_harmonization_2025]
 - Elevation data [Elevatr r-package](https://github.com/usepa/elevatr)
 - NDVI data [Earthdata (NASA website)](https://www.earthdata.nasa.gov/topics/land-surface/normalized-difference-vegetation-index-ndvi/data-access-tools)
+- [Small Woody Features](https://land.copernicus.eu/en/products/high-resolution-layer-small-landscape-features/small-woody-features-2018)
 
 Quantitative datasets were simply projected into the target raster grid while the qualitative dataset (CORINE Land Cover or CLC for short) was converted into two layers for each category inside it:
 
@@ -126,6 +130,8 @@ Quantitative datasets were simply projected into the target raster grid while th
 - One where each pixel contains the proportion of pixels containing the category within a fixed range ($\sqrt{2 \times \text{res}^2}$)
 
 Resolution ($res$) was chosen to be equal to 5 km, which is a good middle ground between local and global scale. Therefore, all rasters contains pixels of appoximately 5x5 km.
+
+**A few examples of the collected environmental rasters:**
 
 ::: {.panel-tabset}
 #### Temperatures
@@ -151,39 +157,37 @@ In order to approximate real species relative abundance, a sample of the STOC da
 ![Rank-occurence curve of species in the STOC dataset, compared to several runs (k=10) of simulated species (n=40).](images/sim_rank-occurence_stoc.png){#fig-roc_stoc width=80%}
 
 ## Model
-To model the distribution of simulated species over France's metropolitan area, we use a specific type of Species Distribution Models (SDM): Joint Species Distribution Models (JSDM). These models make use of several species distributions to find *latent* links between them, which supposedly improves the prediction accuracy[^2].
+To model the distribution of our simulated species over France's metropolitan area, we use a specific type of Species Distribution Models (SDM): a Joint Species Distribution Models (JSDM). These models make use of several species distributions to find *latent* links between them, which supposedly improves the prediction accuracy[^2].
 
 [^2]: JSDM are usually opposed to single SDMs (Species Distribution Models applied to one species) and SSDMs (Stacked SDMs: mutliple SDMs glued together, with no link between them).
 
 ### HMSC
-For this work, HMSC (Hierarchical Modelling of Species Communities) is a good fit. It is a JSDM developped by Ovaskainen et al. (2017) [@ovaskainen_how_2017], and distributed as an open-source R-package on [GitHub](https://github.com/hmsc-r/HMSC/) [@tikhonov_joint_2020]. 
-
-Due to its *relative* simplicity and ease of use, it is undoubtebly the most widely used JSDM in the last years. Its principle is summarised in the next figure, extracted from its original publication [@ovaskainen_how_2017]:
+For this work, HMSC (Hierarchical Modelling of Species Communities) is a good fit. It is a JSDM developped by Ovaskainen et al. (2017) [@ovaskainen_how_2017], and distributed as an open-source R-package on [GitHub](https://github.com/hmsc-r/HMSC/) [@tikhonov_joint_2020]. Due to its *relative* simplicity and ease of use, it is undoubtebly the most widely used JSDM in the last years. Its principle is summarised in the next figure, extracted from its original publication [@ovaskainen_how_2017]:
 
 ![Copy of Figure 4 from Ovaskainen et al. (2017) [@ovaskainen_how_2017]](images/figure4_ovaskainen_2017.png){#fig-HMSC width=100%}
 
-### Other models
+### Other models?
 ::: {.callout-caution collapse="true"}
 ## Work in progress...
 
-Only HMSC has been implemented into our code for now. 
+Along with HMSC, the use of GJAM is under consideration, as well as other SDMs: RF, SSDM, deep-SDMs, ...
 
-GJAM is under consideration, as well as other SDMs: RF, SSDM, deep-SDMs, ...
-
-↳ This section will be updated when new results are available.
+↳ This section will be updated if/when new models are added to pthe project.
 :::
 
-## Adaptive sampling
-Overall, the goal is to find the best 50 locations in the 500 ENI network to add to the BIODICAPT project in order to answer the questions of this study. 
+## Adaptive sampling 
+### Workflow
+Overall, the goal is to find the best 50 locations in the 500 ENI network to add to the BIODICAPT project in order to answer the questions of this study (@sec-objectives). 
 
 In details, HMSC will first be fitted on the simulated presence observations of the 40 bird species at the BIODICAPT locations. Then, a new model will be fitted on the simulated presence observations in BIODICAPT and 50 locations of the 500 ENI network, chosen according to different strategies. Finally, metrics will be used to compare the "base" model to the "retrained" one, to see if there was any gain in quality of prediction and/or the estimation of the effect of actionable variables thanks to the addition of new samples from the 500 ENI network.
 
-This process will be repeated 10 times, each time using a different set a 40 simulated species distributions (with prevalences based on the same STOC occurence reference), so that we can avoid any bias originating from the simulations.
+This process will be repeated 10 times, each time using a different set a 40 simulated species distributions (with prevalences based on the same STOC occurence reference), so that bias originating from the simulations can be averaged.
 
-Here is a visual summary :
+Here is a visual summary of the process :
 
 ![Diagram showing the process followed for the adaptive sampling in this study.](images/flowchart_HMSC_training.png){#fig-OED-BIODICAPT width=100%}
 
+### Selecting new samples
 Now the question you should be asking yourself is "how do you choose which points should be added to the dataset that is used to train HMSC?".
 
 We compared several strategies :
@@ -194,18 +198,18 @@ We compared several strategies :
 
 [^3]: max-uncertainty is often used in active learning methods, which is a connected field of study.
 
-These strategies are directly inspired from a similar study [@mondainmonval_adaptive_2024], though we are using a jSDM model instead of an Ensemble of SSDMs, and that our "adaptive sampling" adds points, instead of changing the mix of sampled areas (which would be impractical in the real world, since )
+These strategies are directly inspired from a similar study [@mondainmonval_adaptive_2024], though we are using a jSDM model instead of an Ensemble of SSDMs, and that our "adaptive sampling" strategy adds points, instead of changing the mix of sampled areas (in practice in the real world, it is often a new funding source that influences sampling; changing the sampling locations is impractical for logistic reasons and loses past historic data).
 
-However, "max-uncertainty" is only a proxy for prediction accuracy (and a heuristic), it is a good one but it does not directly answers the questions of this study. In addition, we also compute two **OED criteria**[^4], for a 4th strategy :
+However, the "max-uncertainty" strategy of the study we take inspiratin from is only a proxy for prediction accuracy (and a heuristic one). Though it is a good proxy, it does not directly answers the questions of this study (@sec-objectives). In addition, we then compute two additional **OED criteria**[^4], for a 4th strategy :
 
 4. **Criteria-optimal**: chooses the points that maximises the information according to an optimality criteria.
 
 [^4]: Wikipedia has a good introduction to these criteria, see [this page](https://en.wikipedia.org/wiki/Optimal_experimental_design#Minimizing_the_variance_of_estimators)
 
-### Choosing the criteria
-Which criteria should we use for this project? 
+### OED introduction
+Which criteria should we use for this project?
 
-Well, in statistical jargon, the initial questions of this work become:
+The initial questions of this work can be reformulated as:
 
 1. Which adaptive design minimises the model's uncertainty in its predictions?
 2. Which adaptive design will enable to get the best estimate of the effect of our actionable variables?
@@ -217,39 +221,146 @@ Different goals give different criteria:
 
 [^5]: FYI: D-optimality (not Ds-optimality) is the most widely used OED criteria. It is a special case of Ds-optimality which aims at maximising the determinant of the information matrix of the design to minimise the volume of the confidence elliposid for the entire set of parameters $\theta$. D-optimality results in maximising the differential Shannon information of the parameter estimates, which is very practical for Bayesian models.
 
-However, since HMSC is a bayesian model with latent variables, these optimisation criterion, that are making use of the Fisher Information Matrix (FIM), are quite difficult (or sometimes, impossible) to actually compute within an acceptable time frame, even with a decent computing capacity. For this reason, acceptable approximations of these criterion are used in this study, relying on the comparison of the posterior distributions of the parameters fitted in the "base" model VS those in the "retrained" models.
+However, since HMSC is a bayesian model with latent variables, these optimisation criterion, that are making use of the Fisher Information Matrix (FIM), are quite difficult (or sometimes, impossible) to actually compute within an acceptable time frame, even with a decent computing capacity. Therefore, reasonable approximations of these criterion are used in this study, relying on the comparison of the posterior distributions of the parameters fitted in the "base" model (BIODICAPT only) VS those in the "retrained" models (BIODICAPT + selected 500 ENI locations).
 
-### Setting and notation {#sec-notation}
-A little of maths now. Buckle up, folks!
+## Setting and notation {#sec-notation}
 
-HMSC is essentially a linear model with random effects. In our study, co-occurence of species are integrated through random independent "site" errors. Therefore, each observation $y$ can be expressed:
+### HMSC
+As stated above, HMSC is a Bayesian model. More specifically, since we are interested in presence-absence data in this study: it is a probit model with latent factors. For site $i$, species $j$, random level $l$, and latent factor $h$ within that level, the observed presence $y_{ij}$ is a thresholded version of the latent $z_{ij}$:
+
 $$
-y = X\theta + \varepsilon \text{\qquad with } \varepsilon \sim \mathcal N(0, \sigma^2)
+\begin{aligned}
+    z_{ij} = x_i^\top \beta_j + \sum_{l}\sum_{h} \lambda_{lhj}\,\eta_{lhi} + \varepsilon_{ij},
+    \\
+    \text{with } y_{ij} &= 1 \text{ when } (z_{ij} > 0)\\
+    \varepsilon_{ij} &\sim\mathcal N(0,1)\\
+    \operatorname{Cov}(\eta_{lh\cdot}) &= K_{lh}\\
+    \beta_j &= (\beta_{S,j},\; \beta_{N,j})
+\end{aligned}
 $$
 
-Where $X \in \mathbb{R}^{n \times p}$ is the design matrix of the
-covariates for the $n$ sites of the design and $p$ parameters, $\theta$ are the parameters and $\varepsilon$ the errors.
+With:
 
-For this model, the Fisher Information Matrix $M$ is written (from [@atkinson_elemental_2014]):
+- $x_i$ the covariates at site $i$.
+- $S$ the set of $s$ covariates we want to estimate precisely (e.g. the actionable variables) among the whole set of $p$ parameters $\beta$, and $N$ is the set containing the intercept and the other covariates ($p - s$ variables).
+- $\eta_{lhi}$ is the score of the factor ($l$, $h$) at site $i$. It is a latent variable, not observed, correlated across units with $K_{lh}$.
+- $\lambda_{lhj}$ is the loading of species $j$ on factor ($l$, $h$). It says how strongly, and in which direction, the species responds to that latent gradient. Two species with loadings of the same sign co-occur more than the covariates alone predict. This is how co-occurrence enters the model, through the residual association matrix.
+- $\varepsilon_{ij}$ is the residual error in the probit model. Its variance is fixed to 1, since with binary data it cannot be separated from the scale of $\beta$.
+
+The matrix $K_{lh}$ depends on the type of random level. For a site (unit) non-spatial level: $K_{lh} = I$ (independent units).
+
+::: {.callout-note collapse="true"}
+### Other random level
+HMSC can also be used with a spatial level. In this case, $K_{lh} = \exp(-d/\alpha_{lh})$ with $d$ the matrix of pairwise distances between units.
+:::
+
+Equivalently, we can write 
+
 $$
-M = X^\top W X = \frac{1}{\sigma^2} X^\top X.
+\boxed{y_{ij} \sim \text{Bernoulli}\big(\Phi(x_i^\top\beta_j + \sum_{l,h}\lambda_{lhj}\eta_{lhi})\big)}
 $$
 
-The Fisher Information Matrix is a useful tool to measure the amount of information that $X$ carries about $\theta$. 
+With $\Phi$ the standard normal cumulative distribution function (cdf).
 
-## Ds-optimality
+
+### Fisher Information
+The Fisher information matrix $M$ measures how much a design $X$ tells us about the parameters. For common GLMs, $M$ is known in closed form [@atkinson_elemental_2014]. $M$ is necessary to compute OED criteria.
+
+Unfortunately, it is not easily obtainable for HMSC, which is a complex non-linear (binary outcome) bayesian model with random effects. 
+
+However, in our study we do not have to explore the entirer space of experimental designs for our model. With BIODICAPT sites, we already have an initial estimation of parameters for our model. Therefore, we can make the assumption that adding new sites from the 500 ENI network will change estimations, but not by huge amounts. The estimators of the parameters are already limited by our initial BIODICAPT design, which means that their is a smaller "remaining" space to explore around each parameter. 
+
+Therefore, for this study, we chose to use an approximation for GLMMs [similarly to @breslow_approximate_1993; @mentre_optimal_1997; @waite_designs_2015] for our model. 
+
+*The idea* is that any smooth function looks approximately linear if you zoom close enough. With our current sampled areas, the plausible space around each parameter is already reduced, which enables us to replace the non-linear probit model with a simpler linear (Gaussian) model around an intial estimation of $\hat\beta_j$ (which we get from the posteriors from the base BIODICAPT model). With this approximation we get a *working model*, that approximates HMSC:
+
+$$
+\Phi(x_i^\top\beta_j) \approx \Phi(x_i^\top\hat\beta_j) + \phi(x_i^\top\hat\beta_j)\, x_i^\top(\beta_j - \hat\beta_j)
+$$
+
+
+::: {.callout-important collapse="true"}
+#### Limits of the approximation
+This only gives use access to *locally* optimal designs.
+
+If $\hat\beta_j$ is close enough to the true $\beta_j$ then the approximation is a good representation of the reality but if the base BIODICAPT-only model is poorly estimated, then the computed "optimality" will be wrong.
+:::
+
+Once linearised, the model behaves like a weighted linear regression for which the Fisher Information Matrix is the usual $M = X^\top V^{-1} X$, with $V$ the total covariance of the working responses. For each species $j$, applying the Gaussian formula to the working model $y_j \sim \mathcal N(X\beta_j,\, V_j)$ gives:
+
+$$
+\boxed{\; M_j \;\approx\; X^\top V_j^{-1} X \;=\; X^\top\bigl(W_j^{-1} + G_j\bigr)^{-1}X \;}
+$$
+
+Where:
+
+- $W_j^{-1}$ is the observtion noise from Bernoulli/probit sampling.
+- $G_j$ is the covariance induced by the latent factors.
+
+::: {.callout-note collapse="true"}
+#### Detailed $W$ and $G$
+From the definition of HMSC above, $G_j$ is the latent term of HMSC: 
+
+$$
+G_j = \sum_{l,h} \mathbb E(\lambda_{lhj}^2)\, K_{lh}
+$$.
+
+With a non-spatial site level, $K_{lh}=I$ so $G_j$ is diagonal. With a spatial level, $G_j$ would have off-diagonal values and the sum would no longer reduces to simple weights.
+
+In addition, since the approximation considers that observations at different sites are independent, then $W_j^{-1}$  is diagonal (any dependence between sites is carried by $G_j$) and can be added to $G_j$, which is also diagonal. It is written:
+
+$$
+W_j = \operatorname{diag}(w_{1j},\dots,w_{nj}), \qquad \text{with }
+w_{ij} = \frac{\varphi(\mu_{ij})^2}{\Phi(\mu_{ij})\bigl(1-\Phi(\mu_{ij})\bigr)}
+$$
+
+With 
+- $\mu_{ij} = x_i^\top\hat\beta_j$,
+- $\varphi$ the standard normal pdf, it is how fast the probability $\mathbb{p}=\Phi(\mu)$ changes when $\mu$ changes. If $\mathbb{p}$ barely moves when $\beta$ changes, data cannot tell you much about $\beta$.
+- $\Phi(1-\Phi)$ the Bernoulli variance $\mathbb{p}(1-\mathbb{p})$. It is largest at 50%.
+
+The expression of $w_{ij}$ is derived from [@atkinson_elemental_2014, table 2 and lemma 1].
+:::
+
+::: {.callout-important collapse="true"}
+###### Limits of this approximation
+- Linearisation around $\hat\beta_j$ evaluates $w_{ij}$ at the conditional predictor $\mu_{ij}$ with random effect set to 0.
+- Each species has its own $M_j$. The cross-species dependence shared through $\eta$ is ignored, as each $M_j$ treats a species on its own.
+:::
+
+
+
+
+## Ds-optimality {#sec-ds}
 ### Formal definition
-In some cases, we might be interested in splitting the parameters into those of "interest" $\theta_{1}$ of dimension $s$ and "nuisance" parameters $\theta_{2}$ (of dimension $p - s$). 
+We are rarely interested in all the parameters equally. Let's split $\beta_j$ into two sets:
 
-In this case, the information matrix $M$ can be partitioned (see [@yi_ds-optimal_2015] eq. 3.3):
+- $\theta_1 = \beta_{S,j}$ the $s$ parameters of interest.
+- $\theta_2 = \beta_{N,j}$ the $(p-s)$ "nuisance" parameters.
+
+In this case, the Fisher information matrix $M$ can be partitioned accordingly (see [@yi_ds-optimal_2015] eq. 3.3):
 
 $$
 \begin{aligned}
 M &= \begin{pmatrix} M_{11} & M_{12} \\ M_{21} & M_{22} \end{pmatrix}
-\end{aligned}, \text{\quad with } X = [X_1 X_2] \text{ and } M_{12} = X_1^\top X_2
+\end{aligned}, \text{\quad with } X = [X_1 X_2]
 $$
 
-By the block-inversion formula[^6], the covariance of $\theta_1$ when estimated together with $\theta_2$ is (see [@yi_ds-optimal_2015] eq. 3.8):
+To find the design that best estimates parameters, a popular criterion is the ${D}$-criterion $\Psi_{D}$ [@wald_efficient_1943; @kiefer_optimum_1959]. By definition, the design that best estimates parameters is a design that maximises:
+
+$$
+\Psi_{D} \;=\; \log\det M \;=\; -\log\det \bigl[M^{-1}\bigr]
+$$
+
+But, in reality, the ${D}$-criterion is a special case of the ${D_s}$-criterion (where $s = p$), which is written:
+
+$$
+\boxed{\;\Psi_{D_s} \;=\; \log\det M_{1|2} \;=\; -\log\det \bigl[M^{-1}\bigr]_{11}\;}
+$$
+
+::: {.callout-note collapse="true"}
+#### Hidden steps
+By the block-inversion formula[^6], the covariance of $\theta_1$ when estimated together with $\theta_2$ is (see [@yi_ds-optimal_2015] eq. 3.8, asymptotic (Cramér-Rao-like) covariance):
 
 [^6]: Again, wikipedia explains this very well, see [this page](https://en.wikipedia.org/wiki/Block_matrix#Inversion).
 
@@ -258,71 +369,56 @@ $$
 \operatorname{Cov}(\hat\theta_1) \;=\; (M^{-1})_{11} \;=\; \bigl(\underbrace{M_{11} - M_{12}\,M_{22}^{-1}\,M_{21}}_{M_{1|2}\;=\;\text{Schur complement}}\bigr)^{-1}.
 $$
 
-$M_{1|2}$ is the information about $\theta_1$ that remains after removing
-what is confounded with the nuisance parameters $\theta_2$. 
+$M_{1|2}$ is the information about $\theta_1$ that remains after removing what is confounded with the nuisance parameters $\theta_2$.
 
 If the columns of $X$ for $\theta_1$ and $\theta_2$ are orthogonal ($M_{12} = 0$), then $M_{1|2} = M_{11}$ and the nuisance parameters cost nothing. If they are strongly correlated, $M_{1|2}$ is much smaller than $M_{11}$.
+:::
 
-To find the design that best estimates parameters, a popular criterion is the ${D}$-criterion $\Phi_{D}$ for $D$-optimal designs [@wald_efficient_1943; @kiefer_optimum_1959]. The design that best estimates parameters is a design that maximises:
-
-$$
-\Phi_{D} \;=\; \log\det M \;=\; -\log\det \bigl[M^{-1}\bigr]
-$$
-
-But in, reality, the ${D}$-criterion is a special case of the ${D_s}$-criterion, where $s = p$, which is written:
+Using $\det M = \det M_{22}\cdot\det M_{1|2}$, it can also be written into a form that is actually easier to compute:
 
 $$
-\boxed{\;\Phi_{D_s} \;=\; \log\det M_{1|2} \;=\; -\log\det \bigl[M^{-1}\bigr]_{11}\;}
+\Psi_{D_s} \;=\; \log\det M \;-\; \log\det M_{22}
 $$
-
-Using $\det M = \det M_{22}\cdot\det M_{1|2}$, it can also be written (this form is actually the easiest to compute):
-
-$$
-\Phi_{D_s} \;=\; \log\det M \;-\; \log\det M_{22}
-$$
-
-
 
 ::: {.callout-note collapse="true"}
-## Special cases
+#### Special cases
 - If $s = p$ Ds-optimality becomes the D-optimality.
 - If $s = 1$: Ds-optimality becomes the C-optimality.
 :::
 
-### Adding a site
-For each site added to the sampling design, the criterion can be computed again, and compared to the previous one. The design with the highest D-criterion being the closest to D-optimality. 
+In practice, for a candidate design, we compute $M_j$ for each species $j$ and evaluate $\Psi_{D_s}(M_j) = \log\det M_{1|2,j}$. To summarise a design we use $\sum_j \Psi_{D_s}(M_j)$. Note that this ignores cross-species dependence shared through $\eta$.
 
-Let $M$ be the information of the current design and a candidate site $x$, with weight $w$ (independent observations), then the new information matrix $M'$ with the added site is derived directly from $M$ with:
 
-$$
-M' = M + w\, x x^\top .
-$$
-
-And we are interested in:
+### Adding a site {#sec-adding-site-ds}
+For each site added to the sampling design, the criterion can be computed again, and compared to the previous one. The design with the highest Ds-criterion being the closest to Ds-optimality. We call this gain $\Delta\Psi_{D_s}$ with:
 
 $$
-\Delta\Phi_{D_s} = \Phi_{D_s}(M') - \Phi_{D_s}(M)
+\Delta\Psi_{D_s} = \Psi_{D_s}(M') - \Psi_{D_s}(M)
 $$
 
-The naive way of computing $\Delta\Phi_{D_s}$ would be to fit our model (HMSC) on a new point, computing $\Phi_{D_s}(M')$ and comparing it to the previous $\Phi_{D_s}(M)$. However, this would be computationally heavy for numerous new points and/or combinations of points, as HMSC is not exactly cheap to refit.
+The naive way of computing $\Delta\Psi_{D_s}$ would be to fit our model (HMSC) on the initial (BIODICAPT) plus a new point (from 500 ENI), computing $\Psi_{D_s}(M')$ and comparing it to the previous $\Psi_{D_s}(M)$.
 
-Another way is to use the Sherman–Morrison–Woodbury formula [@sherman_morrison_1950; @woodbury1950inverting], which enables to compute the inverse "rank-1 update" of a previous invertible matrix. This avoids having to compute new posteriors. 
+However, this would be computationally heavy for numerous new points and/or combinations of points, as HMSC (being a bayesian model) is not exactly cheap to refit.
+
+Another way is to use the Sherman–Morrison–Woodbury formula [@sherman_morrison_1950], which enables to compute the inverse "rank-1 update" of a previous invertible matrix. This avoids having to compute new posteriors. 
 
 ::: {.callout-note collapse="true"}
-#### Steps
+#### Hidden steps
 This formula states that for a matrix $M'$ defined as above, then:
 
 $$
 M'^{-1} = M^{-1} - w \frac{M^{-1} x x^\top M^{-1}}{(1 + w x^\top M^{-1} x)}
 $$
 
-But to compute $\Delta\Phi_{D_s}$, we are only interested in $\det \bigl[M'^{-1}\bigr]_{11}$. Let's define $A = \bigl[M^{-1}\bigr]_{11}$ (so $A^{-1} = M_{1|2}$) and $a = [M^{-1}x]_{1:s}$, the first $s$ components of $M^{-1}x$. Then, with $c = \frac{w}{1 + w\,x^\top M^{-1}x}$ the expression becomes:
+But to compute $\Delta\Psi_{D_s}$, we are only interested in $\det \bigl[M'^{-1}\bigr]_{11}$. 
+
+Let's define $A = \bigl[M^{-1}\bigr]_{11}$ (so $A^{-1} = M_{1|2}$) and $a = [M^{-1}x]_{1:s}$, the first $s$ components of $M^{-1}x$. Then:
 
 $$
-M'^{-1} = A - w \frac{aa^\top}{(1 + w x^\top M^{-1} x)}
+\bigl([M'^{-1}]_{11}\bigr) = A - w \frac{aa^\top}{(1 + w x^\top M^{-1} x)}
 $$
 
-And with $\gamma = \frac{w}{(1 + w x^\top M^{-1} x)}$ we can apply the matrix determinant lemma [^7] which gives:
+With $\gamma = \frac{w}{1 + w\,x^\top M^{-1}x}$ and the application of the matrix determinant lemma[^7], we get:
 
 $$
 \begin{aligned}
@@ -333,7 +429,7 @@ $$
 $$
 $$
 \begin{aligned}
-    \Rightarrow \Delta\Phi_{D_s}
+    \Rightarrow \Delta\Psi_{D_s}
         &= -\log\det[M'^{-1}]_{11} + \log\det[M^{-1}]_{11}\\
         &= -\log\!\left(1 - \frac{w\,a^\top M_{1|2}\,a}{1 + w\,x^\top M^{-1}x}\right)
 \end{aligned}
@@ -342,40 +438,40 @@ $$
 [^7]: Hm, have you heard of wikipedia? see [here](https://en.wikipedia.org/wiki/Matrix_determinant_lemma).
 :::
 
-With it, the approximate gain (without using real full posteriors) in the Ds-criterion can be computed without refit using: 
+Let $x_c$ be a candidate site with a total response variance of $v = \frac{1}{w_{cj}} + g_{cc}$ (probit noise plus random effect, $g_{cc} = (G_j)_{cc}$). Its weight is $w = \frac{1}{v}$. 
+
+With no random effect this reduces to $w = w_{cj}$. Then the new information matrix $M'$ with the added site is derived directly from $M$ with:
 
 $$
-\boxed{\;\Delta\Phi_{D_s} \;=\; -\log\!\left(1 \;-\; \frac{w\; a^\top\, M_{1|2}\, a}{1 + w\, x^\top M^{-1} x}\right)\;}
+M' = M + w\, x x^\top .
+$$
+
+Using this, the approximate gain (because we are not using real full posteriors) in the Ds-criterion can be computed **without refit** using: 
+
+$$
+\boxed{\;\Delta\Psi_{D_s} \;=\; -\log\!\left(1 \;-\; \frac{w\; a^\top\, M_{1|2}\, a}{1 + w\, x^\top M^{-1} x}\right)\;}
 $$
 
 
 ::: {.callout-important collapse="true"}
-#### Limits
-The formula assumes $w$ > 0, $M$ is invertible, and that a single candidate is added at a time.
+#### Limits of this strategy
+The formula assumes $w > 0$, $M$ is invertible, and that a single candidate is added at a time.
+
+It might be possible to look into a "rank-k" generalisation [@woodbury1950inverting] but that's another work entirely.
 :::
 
-With this formula, a greedy selection (add the best candidate, update $M$, repeat) is relatively cheap to compute, HMSC never has to be refitted. However, it might not lead to the optimal design: the gain of a set of candidates is not
-the sum of their individual gains (a candidate can be uninformative alone but valuable in combination), and greedy selection only looks one step ahead.
+With this formula, a greedy selection (add the best candidate, update $M$, repeat) is relatively cheap to compute, HMSC never has to be refitted. 
 
 ### Adding random effects {#sec-correlated}
-
-The previous section assumed independent observations. With a spatially structured site-level random effect in HMSC, this no longer holds: nearby sites share information, and a new site close to the existing ones is partly redundant. This section extends the update formula to that case.
-
-#### Setting
-Let $V$ be the $n \times n$ covariance matrix of response variables. $V$ combines the covariance of the random effect (non-diagonal, since it depends on the distance between sites) and the independent residual variance (diagonal). For a Gaussian model with known $V$, the information matrix is
-
-$$
-M = X^\top V^{-1} X .
-$$
-
-If sites were independent, $V$ would be diagonal and we would recover $M = \sum_i w_i\, x_i x_i^\top$ with $w_i = 1/V_{ii}$, which is the previous section.
 
 When adding a candidate, $M'$ becomes:
 
 $$
-X' = \begin{pmatrix} X \\ x^\top \end{pmatrix}, \qquad
-V' = \begin{pmatrix} V & k \\ k^\top & v \end{pmatrix}, \qquad
-M' = X'^\top V'^{-1} X' .
+\begin{aligned}
+    M' = X'^\top V'^{-1} X',&\\
+    &\text{with } X' = \begin{pmatrix} X \\ x^\top \end{pmatrix},\\
+    &V' = \begin{pmatrix} V & k \\ k^\top & v \end{pmatrix}, \qquad
+\end{aligned}
 $$
 
 With:
@@ -393,34 +489,39 @@ P + \dfrac{P k\, k^\top P}{\sigma_c^2} & -\dfrac{P k}{\sigma_c^2} \\[2mm]
 \end{pmatrix}.
 $$
 
-::: {.callout-tip collapse="true"}
+With :
+
+- $P = V^{-1}$
+- $\sigma_c^2 = v - k^\top P k$, it is the conditional variance of the candidate given the existing sites (the Schur complement of $V$ in $V'$):
+
+::: {.callout-note collapse="true"}
 #### Detailed inversion
 By definition:
 $$
 \begin{aligned}
     V'V'^{-1} &= I\\
-    \begin{pmatrix} V & k \\ k^\top & v \end{pmatrix} \begin{pmatrix} Q & b \\ b^\top & d \end{pmatrix} &= \begin{pmatrix} I_n & 0 \\ 0 & 1 \end{pmatrix}
+    \begin{pmatrix} V & k \\ k^\top & v \end{pmatrix} \begin{pmatrix} Q & c \\ c^\top & d \end{pmatrix} &= \begin{pmatrix} I_n & 0 \\ 0 & 1 \end{pmatrix}
 \end{aligned}
 $$
 
-with $Q$ an $n \times n$ matrix, and b an $n \times 1$ matrix. Then, the system can be written as a system of 4 equations:
+with $Q$ an $n \times n$ matrix, and $c$ an $n \times 1$ matrix. Then, the system can be written as a system of 4 equations:
 
 $$
 \begin{aligned}
     \begin{cases}
-        VQ + kb^\top = I\\
-        Vb + kd = 0\\
-        k^\top Q + v b^\top = 0\\
-        k^\top b + v d = 1\\
+        VQ + kc^\top = I\\
+        Vc + kd = 0\\
+        k^\top Q + v c^\top = 0\\
+        k^\top c + v d = 1\\
     \end{cases}
 \end{aligned}
 $$
 
-By solving for b using the 2nd equation, then solving for d using the last equation we get
+By solving for $c$ using the 2nd equation, then solving for $d$ using the last equation we get
 
 $$
 \begin{aligned}
-    b = -Pkd &\text{, with } P = V^{-1}\\
+    c = -Pkd &\text{, with } P = V^{-1}\\
     d = \frac{1}{\sigma_c^2} &\text{, with } \sigma_c^2 = v - k^\top P k\\
 \end{aligned}
 $$
@@ -428,25 +529,18 @@ $$
 Then, with $P = P^\top$:
 
 $$
-b = - \frac{Pk}{\sigma_c^2} \qquad \text{and} \qquad b^\top = - \frac{k^\top P}{\sigma_c^2}
+c = - \frac{Pk}{\sigma_c^2} \qquad \text{and} \qquad c^\top = - \frac{k^\top P}{\sigma_c^2}
 $$
 
-And finally, using equation 1 and $b^\top$:
+And finally, using equation 1 and $c^\top$:
 
 $$
 Q = P + \frac{Pkk^\top P}{\sigma_c^2}
 $$
 :::
 
-
-In this matrix, $\sigma_c^2$ is the conventional notation for the conditional variance of the candidate given the existing sites (the Schur complement of $V$ in $V'$):
-
-$$
-\sigma_c^2 = v - k^\top P\, k ,
-$$
-
 ::: {.callout-note collapse="true"}
-#### FYI
+#### For information
 $k^\top P k$ is the part of the candidate's variance that is predictable from the existing sites, so $\sigma_c^2$ is the variance that is genuinely new.
 :::
 
@@ -458,7 +552,7 @@ $$
 
 
 ::: {.callout-note collapse="true"}
-#### FYI
+#### For information
 $X^\top P k$ is the part of the candidate's covariates that can be predicted from the existing sites through the spatial correlation, so $x - u$ is what remains.
 :::
 
@@ -469,190 +563,231 @@ $$
 $$
 
 #### Delta Ds-criterion
-We recognise the expression $M' = M + w\,xx^\top$ that we computed previously, with:
+We recognise the expression $M' = M + w\,xx^\top$ that we computed earlier, with:
 
 $$
 x \;\to\; r, \qquad w \;\to\; \frac{1}{\sigma_c^2}.
 $$
 
-Therefore, replacing in the previous expression of $\Delta\Phi_{D_s}$ that we obtained, we get:
+Therefore, replacing in $\Delta\Psi_{D_s}$ we get:
 
 $$
-\boxed{\;\Delta\Phi_{D_s} = -\log\!\left(1 - \frac{a^\top M_{1|2}\, a}{q}\right)\;}
+\boxed{\;\Delta\Psi_{D_s} = -\log\!\left(1 - \frac{a^\top M_{1|2}\, a}{q}\right)\;}
 $$
 
-With $a = [M^{-1}x]_{1:s}$ and $q = \sigma_c^2 + r^\top M^{-1} r$, substituting $w = 1/\sigma_c^2$ and $x = r$ in the previous boxed formula and multiplying numerator and denominator by $\sigma_c^2$.
-
-#### Interpretation
-
-- **Far from the design** ($k \approx 0$): $r \approx x$ and $\sigma_c^2 \approx v$, so we recover the independent case with $w = 1/v$.
-- **Close to the design** (strong correlation): the candidate's covariates are well predicted by its neighbours, so $r \to 0$ while $\sigma_c^2$ stays bounded below by the residual variance. Hence $rr^\top/\sigma_c^2 \to 0$ and so does the gain. If $x$ differs from its neighbours, $r$ stays large and the candidate remains informative.
-
-Spatial spreading of the design therefore emerges naturally from the criterion, without being imposed. This strategy can be compared with gap-filling to assess its actual advantages.
+With $a = [M^{-1}r]_{1:s}$ and $q = \sigma_c^2 + r^\top M^{-1} r$, substituting $w = 1/\sigma_c^2$ and $x = r$ in the previous boxed formula and multiplying numerator and denominator by $\sigma_c^2$.
 
 ::: {.callout-important collapse="true"}
-## Assumptions and limits
+##### Assumptions and limits
 - $V$ is treated as known. In practice it is built from posterior estimates of the random-effect parameters (variance and spatial range) and the residual variance, so the gain is conditional on those estimates.
-- The site random-effect is unstructured (one independent level per site), therefore $V$ is diagonal, $k = 0$, and the previous section applies directly with $w = 1/v$.
 - As before, a single candidate is added at a time, and $M$ must be invertible.
 :::
 
 
-### Application to HMSC
+### Application
 
-HMSC is a Bayesian model. More specifically, in our case: a probit model with random site effects. For site $i$, species $j$, random level $l$, and $h$ the latent factor within that level, the latent variable $z_{ij}$ is written:
+To compute $\Delta\Psi_{D_s}$ we need:
+
+- $a = [M^{-1}r]_{1:s}$, computed from:
+    - $M^{-1}$, which is solved from $M$, computed from $X^\top V^{-1} X$, a Fisher-information approximation of the covariance of the posteriors of $\beta_j$.
+    - $r = x - X^\top P k$
+        - $x$ the vector of new covariates at candidate site $c$
+        - $X$ the covariates matrix of the current design
+        - $P = V^{-1}$, with $V$ the covariance of responses.
+        - $k$ the covariances between the candidate site $c$ and the sites already in the design.All limits of the Ds application hold: plug-in $\hat\beta_j$, one site per unit, and the cross-species dependence through $\eta$ is ignored.
+    - $1:s$ the parameters of interest, which are easily indexed.
+- $q = \sigma_c^2 + r^\top M^{-1} r$, computed from:
+    - $\sigma_c^2 = v - k^\top P k$, computed from:
+        - $v$ the variance of the response at candidate site $c$.
+    - $k$, $r$ and $M^{-1}$ already computed for $a$
+- $M_{1|2}$: the inverse covariance (aka precision) of the estimated $\theta_1$ parameters of interest.
+
+Everything is computed per species $j$, $\Delta\Psi_{D_s}$ is then summed over $j$.
+
+### Evaluation of design
+
+Once a model has been refitted on BIODICAPT plus the new sites using greedy Ds-optimality, a realised analogue of the criterion is available from the MCMC draws:
+
+$$
+\widehat{\Psi}_{D_s} \;=\; -\log\det \widehat{\operatorname{Cov}}_{\text{post}}\!\bigl(\beta_{S,j}\bigr)
+$$
+
+If the posterior is approximately Gaussian, this equals $\log\det M_{1|2,j}$ in the limit of a weak prior. The two quantities are not identical: $M_j$ is an expected information evaluated at a plug-in value (obtained from the BIODICAPT initial sites) and ignores the uncertainty on the latent factors, so the realised posterior might be different. 
+
+The realised criterion can therefore be used to check that the designs rank as predicted, but not to recover the same numerical value.
+
+## I-optimality
+### Formal definition
+When the goal is to predict species well, what matters is the uncertainty of the predictions $\hat y$ at the sites $g$ (not $i$ because the model can be used on site that were not available for training) where the model will be used. In this case, statisticians use I-optimality (for *Integrated*-optimality). It minimises the average prediction variance over a region of interest of $m$ sites, for example a sample of pixels of France or the test sites.
+
+For a point $g$ with covariates $x_g$, the quantity of interest is the predicted probability of presence $p_{gj} = \Phi(x_g^\top\beta_j)$. By the delta method, its variance under the Gaussian approximation is
+
+$$
+\operatorname{Var}(\hat p_{gj}) \approx \varphi(\mu_{gj})^2\; x_g^\top M_j^{-1} x_g, \qquad \mu_{gj} = x_g^\top\hat\beta_j
+$$
+
+Let $\mathcal G$ be the set of $m$ prediction points. The average prediction variance is
 
 $$
 \begin{aligned}
-    z_{ij} = x_i^\top \beta_j + \sum_{l}\sum_h \lambda_{lhj}\,\eta_{lhi} + \varepsilon_{ij},
-    \\
-    \text{with } y_{ij} &= 1 (z_{ij} > 0)\\
-    \varepsilon_{ij} &\sim\mathcal N(0,1)\\
-    \operatorname{Cov}(\eta_{lh\cdot}) &= K_{lh}\\
-    \beta_j &= (\underbrace{\beta_{S,j}}_{\theta_1},\; \underbrace{\beta_{N,j}}_{\theta_2})
+    \frac{1}{m}\sum_{g\in\mathcal G} \varphi(\mu_{gj})^2\, x_g^\top M_j^{-1} x_g \;=\; \operatorname{tr}\!\bigl(M_j^{-1} B_j\bigr),\\
+    \text{with } B_j = \frac{1}{m}\sum_{g\in\mathcal G} \varphi(\mu_{gj})^2\, x_g x_g^\top
 \end{aligned}
 $$
 
-With:
 
-- $S$ the set of covariates we want to estimate precisely (e.g. the actionable variables) and $N$ the intercept and the other covariates.
-- $\eta_{lhi}$ is the score of the factor ($l$, $h$ at site $i$). It is a latent variable, not observed. $\eta$ is correlated across units with $K_{lh}$ (see details under).
-- $\lambda_{lhj}$ is the loading on factor ($l$, $h$, for species $j$). It says how strongly, and in which direction, the species responds to that latent gradient. 
-- $\varepsilon_{ij}$ is the residual error in the probit model. 
-
-The matrix $K_{lh}$ depends on the type of random level:
-
-- spatial level: $K_{lh} = \exp(-d/\alpha_{lh})$ (correlation decaying with $d$, the matrix of pairwise distances between units);
-- site (unit) level, non-spatial: $K_{lh} = I$ (independent units).
-
-**There is no closed-form information matrix**, for two reasons: the outcome is
-binary (it is a non-linear model, so information depends on $\beta$), and
-the random effects must be integrated. 
-
-One remedy [@breslow_approximate_1993; @mentre_optimal_1997; @waite_designs_2015] is to approximate the information matrix of the GLMM by linearising the model around a plug-in value of the parameters (here the posterior mean of the "initial" BIODICAPT model), which yields to a Gaussian working model with covariance $W_j^{-1} + G_j$. We use this solution, though it is the first time (to the best of our knowledge) that it is applied on a probit model with latent factors.
+::: {.callout-note collapse="true"}
+#### Hidden steps
+$x^\top M_j^{-1} x$ is a scalar, therefore:
 
 $$
-M_j \;\approx\; X^\top\bigl(W_j^{-1} + G_j\bigr)^{-1}X,
-\qquad
-G_j = \sum_{l,h} \mathbb{E}(\lambda_{lhj}^2)\ K_{lh},
+\begin{aligned}
+    x^\top M_j^{-1} x &= \operatorname{tr}(x^\top M_j^{-1} x)\\
+               &= \operatorname{tr}(M_j^{-1}\,xx^\top)
+\end{aligned}
 $$
 
-Where
+Why bother: this allows to separate the design-dependent part $M_{j}^{-1}$ from the grid-dependent part $B$, which only needs to be computed once!
+:::
 
-- $W_j = \operatorname{diag}\!\bigl(w_{ij}\bigr)$ with $w_{ij} = \dfrac{\varphi(\eta_{ij})^2}{\Phi(\eta_{ij})\bigl(1-\Phi(\eta_{ij})\bigr)}$ and
-  $\eta_{ij} = x_i^\top \hat\beta_j$
-- $G_j$ is the covariance of the random-effect contribution to the linear predictor, averaged over posterior draws.
+$B$ is called the moment matrix of the region. The design that predicts best is the one that maximises:
+
+$$
+\boxed{\;\Psi_{I} \;=\; -\operatorname{tr}\!\bigl(M^{-1} B\bigr)\;}
+$$
+
+or in our case:
+
+$$
+\Psi_{I} \;=\; -\sum_j \operatorname{tr}\!\bigl(M_j^{-1} B_j\bigr)
+$$
+
+::: {.callout-note collapse="true"}
+#### Special cases
+- If $B = I$, then $\Psi_I = -\operatorname{tr}(M^{-1})$, which is A-optimality. 
+- If $B = \varphi(\mu_{gj})^2 x_g x_g^\top$ for a single point, it is the C-optimality of that prediction.
+- Dropping the $\varphi^2$ factor gives the criterion on the linear predictor $x_g^\top\beta_j$ instead of the probability (and simplifies computation).
+:::
+
+### Adding a site 
+
+We compare I-criteria between designs with:
+
+$$
+\Delta\Psi_I = \Psi_I(M') - \Psi_I(M) = \operatorname{tr}(M^{-1}B) - \operatorname{tr}(M'^{-1}B)
+$$
+
+With the same notations as @sec-ds: $\Delta\Psi_I$ is positive when the candidate reduces the average prediction variance. 
+
+As before, we avoid refitting HMSC by using the Sherman–Morrison formula. 
+
+::: {.callout-note collapse="true"}
+#### Hidden steps
+
+From @sec-adding-site-ds:
+
+$$
+M'^{-1} = M^{-1} - \gamma\, M^{-1}xx^\top M^{-1}, \qquad \gamma = \frac{w}{1 + w\,x^\top M^{-1}x}.
+$$
+
+Let $b = M^{-1}x$ (all $p$ components, unlike the $a$ of Ds, which kept only the first $s$ parameters of interest). Then:
+
+$$
+\operatorname{tr}(M'^{-1}B) = \operatorname{tr}(M^{-1}B) - \gamma\,\operatorname{tr}(b\,b^\top B) = \operatorname{tr}(M^{-1}B) - \gamma\, b^\top B\, b ,
+$$
+
+using the cyclic property of the trace. Therefore
+
+$$
+\Delta\Psi_I = \gamma\, b^\top B\, b = \frac{w\; x^\top M^{-1} B M^{-1} x}{1 + w\,x^\top M^{-1}x}.
+$$
+:::
+
+$$
+\boxed{\;\Delta\Psi_I \;=\; \frac{w\; b^\top B\, b}{1 + w\, x^\top M^{-1} x}\;}, \qquad b = M^{-1}x
+$$
 
 ::: {.callout-important collapse="true"}
-## Limits
-- This formula assumes one unit is one site, there cannot be repetitions.
-- $\eta_{lhi}$ must be independent across $(l, h)$ and independent of $\varepsilon$, which is true in our parametrisation of HMSC.
-- As stated above, the computation of $M_j$ is an approximation. $W_j$ is evaluated at the value of $\beta_j$ given by a prior guess (the initial model).
-- In practice, we will evaluate $\sum_{j} \Delta\Phi_{D_s}$ to summarise each design, this metric ignores cross-species dependence shared through $\eta$.
+#### Limits of this strategy
+Same as for Ds: the formula assumes $w > 0$, $M$ is invertible, and that a single candidate is added at a time.
+
+In addition, $\Delta\Psi_I$ depends on the choice of the prediction region $\mathcal G$, which must be representative of where the model will be used.
 :::
 
-::: {.callout-tip collapse="true"}
-## How to compute it
-For a species $j$, a candidate site $c$ and the $n$ design sites, we need:
-- $X$: the covariates (`hM$X`)
-- $\hat\beta_j$: posterior mean coefficients (`getPostEstimate(m, "Beta")$mean[, j]`)
-- $w_{i,j}$ or $w_c$: probit weights at $\eta = x^\top \hat\beta_j$ (`dnorm`, `pnorm`)
-- $\lambda_{lhj}$: the loadings (`post[[t]]$Lambda[[r]][h, j]`)
 
-Then it is just a matter of a adding and multiplying these quantities correctly. Be sure to use the same scaling for the candidate that was used to fit $\beta$. Compute $\Delta\Phi_{D_s}$ for each species and sum it/average it to rank candidates.
+### Adding random effects
+With the correlated random effect, the same substitution as for Ds (using $V = W_j^{-1} + G_j$) applies. As a reminder: 
+
+$$
+\boxed{\; M' = M + \frac{r\, r^\top}{\sigma_c^2} \;}, \qquad \text{with } r = x - X^\top P\, k, \quad \sigma_c^2 = v - k^\top P k
+$$
+
+
+Which gives:
+
+$$\boxed{\;\Delta\Psi_I \;=\; \frac{b_r^\top B\, b_r}{q}\;}, \qquad \text{with } b_r = M^{-1}r, \quad q = \sigma_c^2 + r^\top M^{-1} r .$$
+
+::: {.callout-important collapse="true"}
+#### Assumptions and limits
+- $V$ is treated as known. In practice it is built from posterior estimates of the random-effect parameters (variance and spatial range) and the residual variance, so the gain is conditional on those estimates.
+- As before, a single candidate is added at a time, and $M$ must be invertible.
+- This criterion targets the predicted probability at the conditional predictor (random effect set to 0), with a first-order delta-method variance. $\varphi(\mu_{gj})$ is evaluated at the plug-in $\hat\beta_j$, like the weights $w$.
 :::
 
-### Evaluation of design
+### Application
 
-Once a model has been refitted on BIODICAPT + the new sites using Ds-optimality, the realised analogue of the criterion is available from the MCMC draws:
+For a candidate site $c$ and a species $j$, computing $\Delta\Psi_I$ needs:
 
-$$
-\widehat{\Phi}_{D_s} \;=\; -\log\det \widehat{\operatorname{Cov}}_{\text{post}}\!\bigl(\beta_{S,j}\bigr),
-$$
+- $B_j = \frac{1}{m}\sum_{g\in\mathcal G} \varphi(\mu_{gj})^2 x_g x_g^\top$, the moment matrix of the region for species $j$. It is a $p \times p$ matrix, computed once per species from the covariates of the $m$ prediction points and $\hat\beta_j$.
+- $b_r = M^{-1} r$, computed from:
+    - $M^{-1}$, solved from $M = X^\top V^{-1} X$ (same as for Ds). Unlike $a$ for Ds, $b_r$ keeps all $p$ components.
+    - $r = x - X^\top P k$, with $P = V^{-1}$ and $k$ as in the Ds application. In the independent case, $r = x$.
+- $q = \sigma_c^2 + r^\top M^{-1} r$, with $\sigma_c^2 = v - k^\top P k$. These quantities are the same as for Ds, so the two criteria share all the heavy computations.
 
-Under an approximately Gaussian posterior, it is the same quantity as $\log\det M_{1|2}$ (plus the prior).
+The gain is then $\Delta\Psi_{I,j} = b_r^\top B\, b_r / q$, summed over species: $\Delta\Psi_I = \sum_j \Delta\Psi_{I,j}$.
 
-**Bonus**: To understand this criterion, a minimal working example comparing random, gap-filling, max-uncertainty, Ds- and I-optimal designs is available in [an accompanying quarto document](./minimal_working_examples/I-optimality.qmd).
+::: {.callout-important collapse="true"}
+#### Limits
+All limits of the Ds application hold: plug-in $\hat\beta_j$, one site per unit, and the cross-species dependence through $\eta$ is ignored.
 
-
-
-
-<!-- ## I-optimality
-### Formal definition
-While Ds-optimality is about estimating *parameters*, when the goal is to *predict* well, what matters is the uncertainty of the predictions $\hat y(x_0)$ at the sites $x_0$ where the model will be used. In this case, statisticians use I-optimality (for *Integrated*-optimality). It minimises the average prediction variance over a region of interest $\mathcal{T}$, for example a sample of pixels of France or the test sites.
-
-For a linear model, the variance of the prediction at $x_0$ is $\operatorname{Var}(x_0^\top\hat\theta) = x_0^\top M^{-1} x_0$. Averaging over $T$ sites (a subset of $\mathcal{T}$) gives:
-
-$$
-\frac{1}{T}\sum_{t=1}^{T} x_t^\top M^{-1} x_t \;=\; \operatorname{tr}\!\bigl(M^{-1} B\bigr),
-\qquad
-B = \frac{1}{T}\sum_{t=1}^{T} x_t x_t^\top ,
-$$
-
-We call $B$ the "moment matrix" of the region. 
-
-With the same sign convention as for Ds-optimality (where we are looking to maximise the criterion), then:
-
-$$
-\boxed{\;\Phi_{I}(D) \;=\; -\operatorname{tr}\!\bigl(M(D)^{-1} B\bigr)\;}
-$$
-
-::: {.callout-note}
-## Non-linear (probit) models
-What we predict is a probability $p_t = \Phi(x_t^\top\beta)$, not the linear predictor. By the delta method, $\operatorname{Var}(\hat p_t) \approx \varphi(\eta_t)^2\, x_t^\top M^{-1} x_t$ (with $\eta_t = x_t^\top\beta$). The same formula holds with a weighted moment matrix:
-
-$$
-B = \frac{1}{T}\sum_{t=1}^{T} \varphi(\eta_t)^2\, x_t x_t^\top .
-$$
-
-so that $\operatorname{tr}(M^{-1}B)$ is exactly the average variance of the predicted probabilities. The weights $\varphi(\eta)^2$ give less importance to sites where the probability is close to 0 or 1 (where it hardly moves when $\beta$ changes).
-:::
-
-### Link with the previous criteria
-
-- **D- vs I-optimality**: Ds-optimality looks at the *volume* of the confidence ellipsoid of some parameters, I-optimality looks at the *trace* of $M^{-1}$ weighted by where we predict. A design that is good for one can be bad for the other: for inference, Ds-optimal designs put sites at the extremes of the gradient of interest, which may leave other directions of the parameter space poorly determined, and predictions rely on all of them.
-- **Max-uncertainty vs I-optimality**: max-uncertainty ranks candidates by $\varphi(\eta_c)\sqrt{x_c^\top M^{-1}x_c}$, which is the prediction variance at the candidate *itself*. This essentially is the I-criterion in the special case where the region of interest is reduced to one candidate, $B = x_c x_c^\top$. It is a good proxy but it ignores that two similar uncertain candidates are redundant, whereas I-optimality accounts for it (the gain of a site decreases once similar sites are added).
-
-### Adding a site
-With $M'$, $M^{-1}$, $a$ and $q$ defined as they were for Ds-optimality, then we get:
-
-$$
-\boxed{\;\Delta\Phi_{I}(x) \;=\; \operatorname{tr}(M^{-1}B) - \operatorname{tr}(M'^{-1}B) \;=\; \frac{a^\top B\, a}{q}\;}
-$$
-
-Where $q = \frac{1}{w} + x^\top M^{-1} x$
-
-Compared with $\Delta\Phi_{D_s} = -\log\bigl(1 - a_S^\top S\, a_S / q\bigr)$, only the numerator differs. All candidates can therefore be scored at once with matrix products, the best one is added, $M$ is updated, and the process is repeated (greedy selection, no model refit). With correlated observations (@sec-correlated), the same formula holds with $x \to r$ and $w \to 1/\sigma_c^2$.
-
-### Application to HMSC
-The recipe is the one of the Ds-optimality section, applied to each species $j$ and then summed:
-
-1. **Current information** $M_{0,j}$: the *posterior precision* of $\beta_j$ in the model fitted on the current design, $M_{0,j} = \widehat{\operatorname{Cov}}_{\text{post}}(\beta_j)^{-1}$, computed from the MCMC draws. It contains the information of the current sites (and of the prior), whatever the random effects.
-2. **Weights** $w_{ij}$ of the candidates: the probit weights at the posterior mean $\hat\beta_j$ (not at unknown true values), attenuated by the non-spatial random effects with the Laplace-type approximation above, $w_{ij} \leftarrow \bigl(1/w_{ij} + g_j\bigr)^{-1}$, $g_j = \sum_h \lambda_{hj}^2$ averaged over posterior draws. For a "site" random level ($K = I$) this is all that is needed, because $G_j = g_j I$ keeps observations independent.
-3. **Region of interest** $B_j$: computed at $\hat\beta_j$ with the sites in `target_set` (by default, the pool of candidates is used as a proxy of the region we want to predict).
-4. **Greedy selection**: at each step, the gains $\Delta\Phi_{I,j}(x)$ of all remaining candidates are computed for each species, summed over species with equal weights (which gives the average prediction variance over species, the quantity that is also measured at the end through the SD of predictions), the best candidate is added, and all the $M_j$ are updated. For several `n`-part strategies, the model is refitted between the parts, so that $M_{0,j}$ and $\hat\beta_j$ are updated.
-
-::: {.callout-warning}
-## Approximations
-- Species are treated as independent: the information shared between species through the latent factors is ignored.
-- The prediction variance only counts the uncertainty on $\beta$, not the uncertainty on the random effects at the predicted sites.
-- Spatial random levels are not implemented (they require the covariance between sites, see @sec-correlated); the code stops with an error in that case.
+The criterion targets the predictions of the linear predictor (or of the probability by the delta method), not the predictions of community composition, which depend on the joint distribution across species.
 :::
 
 ### Evaluation of design
-Once a model has been refitted on BIODICAPT + the new sites from the 500 ENI network using I-optimality, the realised analogue of the criterion is the average posterior standard deviation of the predictions on independent sites (the "SD of predictions" metric in the results), which can be compared to the one of the reference model. We also look at the error of the predictions (MSE).
 
-**Bonus**: To understand this criterion, a minimal working example comparing random, gap-filling, max-uncertainty, Ds- and I-optimal designs is available in [an accompagning quarto document](./minimal_working_examples/I-optimality.qmd). -->
+Once a model has been refitted on BIODICAPT plus the new sites using greedy I-optimality, the realised analogue of the criterion is available from the posterior covariance of $\beta_j$ in the same way as for Ds:
 
+$$
+\widehat{\Psi}_{I,j} = -\operatorname{tr}\!\bigl(\widehat{\operatorname{Cov}}_{\text{post}}(\beta_j)\,B_j\bigr) = -\frac1m\sum_{g}\varphi(\hat\mu_{gj})^2\,\widehat{\operatorname{Var}}_{\text{post}}\bigl(x_g^\top\beta_j\bigr)
+$$
+
+with $\hat\mu_{gj}$ the posterior mean of the linear predictor. 
+
+The right-hand side is computed from the MCMC draws as the variance across draws of the linear predictor at each grid point, multiplied by $\varphi(\hat\mu_{gj})^2$ and averaged over the grid. It is a delta-method approximation of the posterior variance of the predicted probability.
+
+Same as for Ds, it is used to check that the designs rank as predicted, not to recover the same numerical value.
 
 # Results
-Models are evaluated using several metrics:
+## Approximations
+Approximate criteria are compared to their realised values to confirm the approximation holds.
 
-- MSE of predictions: measures the deviation between observations and predictions.
-- SD of predictions: measures the "spread" of predictions posteriors.
-- SD of parameters: measures the "spread" of parameters posteriors.
+## Sampling in 500 ENI
 
-The goal is to find the strategy that minimises these metrics the most.
+## Comparison with previous works
+
+This study was partly inspired by Mondain-Monval et al. (2024) [@mondainmonval_adaptive_2024]. The strategies "random-sampling", "gap-filling" and max-uncertainty" are directly based on their work, although we modified several aspects of their methods:
+
+| Parameter | M.M. [@mondainmonval_adaptive_2024] | Ours |
+|:---------:|:---------:|:---------:|
+| Simulated dataset | Based on butterfly data | Based on STOC (FBBS) data |
+| Number of species | 50 species | 40 species |
+| Number of variables | 10 (randomly selected from 33 available) | 15 (hand picked, containing 2 actionable variables[^8]) |
+| Model type | Ensemble model (GLM + GAM + RF) | HMSC |
+| Re-training | Mixing of 1%, 10% or 50% of the initial dataset | Addition of new samples (50) to the initial dataset |
+| Training size | 2000 cells | 150 locations + 50 new locations |
+
+[^8]: for now, it is "light pollution" and "swf" as we consider that these are the only two variables that local politics cainfluence.
+
 
 ::: {.callout-note collapse="false"}
 ## To be continued...

@@ -28,6 +28,7 @@ source(here::here("R/utils_data.R"))
 source(here::here("data/config/config.R")) # all parameters are grouped together
 source(here::here("R/utils_data.R"))  # needs get_metropolitan_france_shapefile
 
+
 ##### Global functions ##### --------------------------------------------------
 # A wrapper to create a custom ggplot theme 
 # ARGS:
@@ -212,6 +213,63 @@ ggplot_get_france_base_map <- function(
     return(my_custom_ggplot_theme(base_map, with_palette=FALSE, is_map = TRUE))
 }
 
+# A function to create a ggplot that shows a categorical SpatRaster
+# on a given map
+# ARGS:
+#   - background_map: a ggplot object. The background map that will be used.
+#   - raster: a SpatRaster. Categorical values (integer codes or factor).
+#   - layer_name: a string or integer. The layer of the raster to show.
+#       Defaults to the first layer.
+#   - color_df: a dataframe. Contains columns "Value", "hex" and the label column.
+#   - label_layer_name: a string. Column of color_df used for legend labels.
+#   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS).
+#   - max_cells: a numeric, the maximum number of cells before downsampling.
+# RETURNS:
+#   - a ggplot figure
+ggplot_categorical_raster_on_background_map <- function(
+        background_map,
+        raster,
+        layer_name = "NEW_LABEL3",
+        max_cells = 5e5,
+        lon_min = LON_MIN, lon_max = LON_MAX,
+        lat_min = LAT_MIN, lat_max = LAT_MAX) {
+
+    # keep only the requested layer (avoids the "mixed layer classes" warning)
+    raster <- raster[[layer_name]]
+
+    # build label -> hex color from the embedded color table
+    ct <- terra::coltab(raster)[[1]]
+    lv <- terra::levels(raster)[[1]]
+    m  <- merge(lv, ct, by.x = names(lv)[1], by.y = "value")
+    color_key <- setNames(
+        grDevices::rgb(m$red, m$green, m$blue, m$alpha, maxColorValue = 255),
+        m[[layer_name]])
+
+    # make ggplot
+    map_category_grid <- suppressMessages(
+        background_map +
+            tidyterra::geom_spatraster(
+                data = raster,
+                aes(fill = .data[[layer_name]]),
+                maxcell = max_cells) +
+            scale_fill_manual(
+                values = color_key,
+                na.value = "transparent",
+                na.translate = FALSE) +
+            labs(
+                x = "longitude",
+                y = "latitude",
+                fill = "Land Cover") +
+            coord_sf(
+                crs = PROJECT_CRS,
+                xlim = c(lon_min, lon_max),
+                ylim = c(lat_min, lat_max))
+    )
+
+    my_custom_ggplot_theme(
+        map_category_grid, with_palette = FALSE, is_map = TRUE)
+}
+
 # A function to create a ggplot that shows a shapefile of categorical values 
 # on a given map
 # ARGS:
@@ -263,66 +321,6 @@ ggplot_categorical_shapefile_on_background_map <- function(
     
     return(my_custom_ggplot_theme(
         map_category_grid, with_palette = FALSE, is_map = TRUE))
-}
-
-# A function to create a ggplot that shows a shapefile of continuous values on a map
-# ARGS:
-#   - background_map: a ggplot object. 
-#       The background map that will be used.
-#   - shapefile: a shapefile.
-#   - layer_name: a string. The name of the layer to show.
-#   - unit: a string. A label that will be shown along the palette displayed.
-#   - limits: a vector of 2 values (optional). 
-#       Sets hard limits on the values considered by the palette.
-#   - cmap: a string or a custom colormap.
-#   - precision_auto_limits: when limits is NULL, precision of color scale 
-#       (values are rounded to closest precision_auto_limits)
-# RETURNS:
-#   - a ggplot figure
-ggplot_quantitative_shapefile_on_background_map <- function(
-        background_map,
-        shapefile,
-        layer_name,
-        unit="°C",
-        limits=NULL,
-        cmap = "turbo",
-        precision_auto_limits = 1e-5
-    ) {
-
-    if (is.vector(limits) && length(limits) == 2){
-        low_limit <- limits[1]
-        high_limit <- limits[2]
-    } else if (is.null(limits)) {
-        # round palette scale to the bottom and top nearest multiple of 5
-        low_limit <- floor(min(shapefile[[layer_name]], na.rm = TRUE) / precision_auto_limits) * precision_auto_limits
-        high_limit <- ceiling(max(shapefile[[layer_name]], na.rm = TRUE) / precision_auto_limits) * precision_auto_limits
-    } else {
-        stop(paste("'limits' is not recognised. Expected vector of length 2 or NULL, got", limits))
-    }
-
-    map_quantity_grid <- suppressMessages(background_map +
-        geom_sf( # color field to hide the anti-aliasing between polygons
-            data = shapefile, 
-            alpha = 1,
-            aes(fill = .data[[layer_name]], color = after_scale(fill)),
-            linewidth = 0.1) +
-        scale_fill_continuous(
-            na.value = "transparent", 
-            palette = cmap,
-            limits = c(low = low_limit, high = high_limit)) +
-        scale_color_continuous(
-            na.value = "transparent", 
-            palette = cmap,
-            limits = c(low = low_limit, high = high_limit)) +
-        labs(x = "longitude", y = "latitude", fill = unit, color = unit) +
-        coord_sf(
-            crs = PROJECT_CRS,
-            xlim = c(LON_MIN, LON_MAX), 
-            ylim = c(LAT_MIN, LAT_MAX))
-    )
-
-    return(my_custom_ggplot_theme(
-        map_quantity_grid, with_palette = FALSE, is_map = TRUE))
 }
 
 # A function to create a ggplot that shows scattered locations on a map
@@ -427,6 +425,152 @@ ggplot_categorical_df_on_background_map <- function(
     }
 }
 
+# A function to create a ggplot that shows a SpatRaster of continuous values on a map
+# ARGS:
+#   - background_map: a ggplot object.
+#       The background map that will be used.
+#   - raster: a SpatRaster.
+#   - layer_name: a string or integer. The layer to show (defaults to the first).
+#   - unit: a string. A label that will be shown along the palette displayed.
+#   - transform_scale: a string. Transforms only the color scale.
+#   - limits: a vector of 2 values (optional).
+#       Sets hard limits on the values considered by the palette.
+#   - cols: a list of custom colors.
+#   - precision_auto_limits: when limits is NULL, precision of color scale
+#       (values are rounded to closest precision_auto_limits)
+#   - max_cells: a numeric, the maximum number of cells before downsampling.
+# RETURNS:
+#   - a ggplot figure
+ggplot_quantitative_raster_on_background_map <- function(
+        background_map,
+        raster,
+        layer_name = 1,
+        unit = "°C",
+        transform_scale = "sqrt",
+        limits = NULL,
+        cols = CONTRASTED_PLASMA_COLOURS,
+        precision_auto_limits = 1e-5,
+        max_cells = 5e5) {
+
+    r <- raster[[layer_name]]
+    names(r) <- "value"
+
+    # limits from the full-resolution data, before aggregating,
+    # so that aggregation doesn't shrink the extremes
+    if (is.vector(limits) && length(limits) == 2) {
+        low_limit  <- limits[1]
+        high_limit <- limits[2]
+    } else if (is.null(limits)) {
+        mm <- terra::global(r, c("min", "max"), na.rm = TRUE)
+        low_limit  <- floor(mm$min / precision_auto_limits) * precision_auto_limits
+        high_limit <- ceiling(mm$max / precision_auto_limits) * precision_auto_limits
+    } else {
+        stop(paste("'limits' is not recognised. Expected vector of length 2 or NULL, got",
+                   paste(limits, collapse = ", ")))
+    }
+
+    # 2. downsample if there are more cells than needed
+    if (terra::ncell(r) > max_cells) {
+        fact <- ceiling(sqrt(terra::ncell(r) / max_cells))
+        r <- terra::aggregate(r, fact = fact, fun = "mean", na.rm = TRUE)
+    }  
+
+    # raster -> data.frame of cell centers (drops NA cells)
+    df <- as.data.frame(r, xy = TRUE, na.rm = TRUE)
+
+    if (is.vector(limits) && length(limits) == 2) {
+        low_limit <- limits[1]
+        high_limit <- limits[2]
+    } else if (is.null(limits)) {
+        low_limit <- floor(min(df$value) / precision_auto_limits) * precision_auto_limits
+        high_limit <- ceiling(max(df$value) / precision_auto_limits) * precision_auto_limits
+    } else {
+        stop(paste("'limits' is not recognised. Expected vector of length 2 or NULL, got",
+                   paste(limits, collapse = ", ")))
+    }
+
+    map_quantity_grid <- suppressMessages(
+        background_map +
+            geom_raster(data = df, aes(x = x, y = y, fill = value)) +
+            scale_fill_gradientn(
+                colours = cols,
+                trans = transform_scale,
+                limits = c(low_limit, high_limit),
+                name = unit,
+                na.value = "transparent"
+            ) +
+            labs(x = "longitude", y = "latitude", fill = unit) +
+            coord_sf(
+                crs = PROJECT_CRS,
+                xlim = c(LON_MIN, LON_MAX),
+                ylim = c(LAT_MIN, LAT_MAX)
+            )
+    )
+
+    return(my_custom_ggplot_theme(
+        map_quantity_grid, with_palette = FALSE, is_map = TRUE))
+}
+
+# A function to create a ggplot that shows a shapefile of continuous values on a map
+# ARGS:
+#   - background_map: a ggplot object. 
+#       The background map that will be used.
+#   - shapefile: a shapefile.
+#   - layer_name: a string. The name of the layer to show.
+#   - unit: a string. A label that will be shown along the palette displayed.
+#   - transform_scale: a string. Transforms only the color scale.
+#   - limits: a vector of 2 values (optional). 
+#       Sets hard limits on the values considered by the palette.
+#   - cols: a list of custom colors.
+#   - precision_auto_limits: when limits is NULL, precision of color scale 
+#       (values are rounded to closest precision_auto_limits)
+# RETURNS:
+#   - a ggplot figure
+ggplot_quantitative_shapefile_on_background_map <- function(
+        background_map,
+        shapefile,
+        layer_name,
+        unit = "°C",
+        transform_scale = "sqrt",
+        limits = NULL,
+        cols = CONTRASTED_PLASMA_COLOURS,
+        precision_auto_limits = 1e-5
+    ) {
+
+    if (is.vector(limits) && length(limits) == 2){
+        low_limit <- limits[1]
+        high_limit <- limits[2]
+    } else if (is.null(limits)) {
+        # round palette scale to the bottom and top nearest multiple of 5
+        low_limit <- floor(min(shapefile[[layer_name]], na.rm = TRUE) / precision_auto_limits) * precision_auto_limits
+        high_limit <- ceiling(max(shapefile[[layer_name]], na.rm = TRUE) / precision_auto_limits) * precision_auto_limits
+    } else {
+        stop(paste("'limits' is not recognised. Expected vector of length 2 or NULL, got", limits))
+    }
+
+    map_quantity_grid <- suppressMessages(background_map +
+        geom_sf( # color field to hide the anti-aliasing between polygons
+            data = shapefile, 
+            alpha = 1,
+            aes(fill = .data[[layer_name]], color = after_scale(fill)),
+            linewidth = 0.1) +
+        scale_fill_gradientn(
+            colours = cols,
+            trans = transform_scale,
+            limits = c(low_limit, high_limit),
+            name = unit,
+            na.value = "transparent") +
+        labs(x = "longitude", y = "latitude", fill = unit, color = unit) +
+        coord_sf(
+            crs = PROJECT_CRS,
+            xlim = c(LON_MIN, LON_MAX), 
+            ylim = c(LAT_MIN, LAT_MAX))
+    )
+
+    return(my_custom_ggplot_theme(
+        map_quantity_grid, with_palette = FALSE, is_map = TRUE))
+}
+
 # A function to create a ggplot that shows scattered locations on a map
 # ARGS:
 #   - background_map: a ggplot object. The background map that will be used.
@@ -439,7 +583,8 @@ ggplot_categorical_df_on_background_map <- function(
 #       Sets a hard limits on the values considered by the palette.
 #   - precision_auto_limits: when limits is NULL, precision of color scale 
 #       (values are rounded to closest precision_auto_limits)
-#   - cmap: a string or a custom colormap.
+#   - cols: a list of custom colors.
+#   - transform_scale: a string. Transforms only the color scale.
 #   - col, size, shape, stroke : default markers for ggplot.
 #   - lon_min, lon_max, lat_min, lat_max: extent for the output (in PROJECT_CRS6).
 # RETURNS:
@@ -454,7 +599,8 @@ ggplot_quantitative_df_on_background_map <- function(
         unit = NULL,
         limits = NULL,
         precision_auto_limits = 1e-5,
-        cmap = "turbo",
+        cols = CONTRASTED_PLASMA_COLOURS,
+        transform_scale = "sqrt",
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
@@ -500,14 +646,18 @@ ggplot_quantitative_df_on_background_map <- function(
                     color = .data[[column]]
                 )
             ) +
-            scale_fill_continuous(
-                na.value = "transparent", 
-                palette = cmap,
-                limits = c(low = low_limit, high = high_limit)) +
-            scale_color_continuous(
-                na.value = "transparent", 
-                palette = cmap,
-                limits = c(low = low_limit, high = high_limit)) +
+            scale_fill_gradientn(
+                colours = cols,
+                trans = transform_scale,
+                limits = c(low_limit, high_limit),
+                name = unit,
+                na.value = "transparent") +
+            scale_color_gradientn(
+                colours = cols,
+                trans = transform_scale,
+                limits = c(low_limit, high_limit),
+                name = unit,
+                na.value = "transparent") +
             labs(
                 x = "longitude",
                 y = "latitude",
@@ -550,6 +700,7 @@ ggplot_quantitative_df_on_background_map <- function(
             map_obs, with_palette = FALSE, is_map = TRUE))
     }
 }
+
 
 ##### HMSC interpretation ##### -----------------------------------------------
 # A function that mimicks Hmsc::plotBeta
@@ -706,9 +857,10 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
 compare_plot <- function(
         ref_scores = NULL, compare_scores = NULL, metric, diffs_scores = NULL,
         x_var = NULL, x_order = NULL,
-        fill_var = NULL, 
-        panel_var = NULL, panel_order = NULL, 
-        group_species = TRUE, 
+        fill_var = NULL, fill_order = NULL,
+        color_order = NULL, random_strategy = "random-sampling",
+        panel_var = NULL, panel_order = NULL,
+        group_species = TRUE,
         save_to = NULL) {
 
     if (is.null(diffs_scores)) {
@@ -736,7 +888,7 @@ compare_plot <- function(
         diffs_df <- diffs_scores
     }
 
-    # dummy x so the boxplot still has a discrete position
+    # dummy x so the violin still has a discrete position
     if (is.null(x_var)) {
         diffs_df$.x <- factor("all")
         x_col <- ".x"
@@ -753,12 +905,16 @@ compare_plot <- function(
         diffs_df <- diffs_df |> filter(.data[[panel_var]] %in% panel_order)
     }
 
-    # dummy fill so the boxplot still has a single group to colour
+    # dummy fill so the violin still has a single group to colour
     if (is.null(fill_var)) {
         diffs_df$.fill <- factor("all")
         fill_col <- ".fill"
     } else {
-        diffs_df[[fill_var]] <- factor(diffs_df[[fill_var]])
+        diffs_df[[fill_var]] <- if (is.null(fill_order)) {
+            factor(diffs_df[[fill_var]])
+        } else {
+            factor(diffs_df[[fill_var]], levels = fill_order)
+        }
         fill_col <- fill_var
     }
 
@@ -807,23 +963,55 @@ compare_plot <- function(
         y_label <- ""
     }
 
-    # 5. Plot
-    n_fill <- nlevels(diffs_df[[fill_col]])
+    # one summary value per violin: x value x fill value (x facet cells)
+    summary_keys <- unique(c(x_col, fill_col, panel_var,
+                             if (!group_species) "sp"))
+    violin_summary <- diffs_df |>
+        group_by(across(all_of(summary_keys))) |>
+        summarise(m = mean(diff_score, na.rm = TRUE), .groups = "drop")
+
+    # 5. Colours: tied to values (via color_order), not to plotting position
+    lvls_now   <- levels(diffs_df[[fill_col]])
+    color_lvls <- if (is.null(color_order)) {
+        sort(lvls_now)
+    } else {
+        c(intersect(color_order, lvls_now), setdiff(lvls_now, color_order))
+    }
+
+    if (!is.null(random_strategy) && random_strategy %in% color_lvls) {
+        # grey for the random strategy, palette for the others (as in distribution_plot)
+        rest        <- setdiff(color_lvls, random_strategy)
+        fill_colors <- c(setNames("grey70", random_strategy),
+                         setNames(rep_len(PALETTE, length(rest)), rest))
+    } else {
+        fill_colors <- setNames(rep_len(PALETTE, length(color_lvls)), color_lvls)
+    }
+
+    fill_title <- if (is.null(fill_var)) {
+        NULL
+    } else {
+        fill_var |> str_replace_all("_", " ") |> str_to_sentence()
+    }
+
+    # 6. Plot
+    dodge <- position_dodge(width = 0.75)
+
     p <- ggplot(
             diffs_df,
             aes(y = diff_score, x = .data[[x_col]], fill = .data[[fill_col]])) +
-        geom_boxplot(position = position_dodge(width = 0.75),
-                    width = 0.6, outlier.shape = 16) +
-        labs(caption = bottom_caption,
-            fill = if (is.null(fill_var)) {
-                NULL 
-            } else {
-                fill_var |> str_replace_all("_", " ") |> str_to_sentence()
-            }
-        ) +
+        geom_violin(position = dodge, width = 0.6,
+                    scale = "width", trim = TRUE,
+                    colour = "grey30", alpha = 0.7, linewidth = 0.4) +
+        geom_point(position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.75),
+                   size = 0.8, alpha = 0.5, colour = "grey20", show.legend = FALSE) +
+        geom_point(data = violin_summary,
+                   aes(x = .data[[x_col]], y = m, group = .data[[fill_col]]),
+                   inherit.aes = FALSE, position = dodge,
+                   shape = 23, size = 2.5, fill = "white", colour = "black") +
+        labs(caption = bottom_caption, fill = fill_title) +
         ylab(paste0(y_label, metric)) +
         xlab(if (is.null(x_var)) {
-                NULL 
+                NULL
             } else {
                 x_var |> str_replace_all("_", " ") |> str_to_sentence()
             }
@@ -844,8 +1032,8 @@ compare_plot <- function(
     }
 
     p <- my_custom_ggplot_theme(p) +
-        scale_fill_manual(values = PALETTE[seq_len(n_fill)])
-    
+        scale_fill_manual(values = fill_colors)
+
     if (is.null(fill_var)) p <- p + guides(fill = "none")
 
     if (is.null(x_var)) {
@@ -857,8 +1045,8 @@ compare_plot <- function(
 
     # lower is better for MSE/RMSE, so flip the axis
     if ((grepl("MSE", metric) || grepl("SD", metric)) && (!grepl("Δ", metric))) {
-        p <- p + scale_y_reverse() 
-    } 
+        p <- p + scale_y_reverse()
+    }
 
     # Save and return results
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
@@ -961,11 +1149,10 @@ distribution_plot <- function(
         size_var = "NEW_SAMPLE_SIZES",
         panel_var = "subset", panel_order = NULL,
         summary_fun = mean,
-        lower_is_better = NULL,
-        bins = 20,
+        lower_is_better = FALSE,
+        show_points = TRUE,
+        ref_label = "Reference model",
         save_to = NULL) {
-
-    if (is.null(lower_is_better)) lower_is_better <- !grepl("Ds", metric)
 
     # 1. Species-averaged score for each fold, strategy, size and panel
     keys <- c(panel_var, size_var, strat_var)
@@ -978,18 +1165,11 @@ distribution_plot <- function(
         fold_df <- fold_df |> filter(.data[[panel_var]] %in% panel_order)
     }
 
-    # 2. Random cloud (histogram) and strategy summaries (vertical lines)
-    rand_df <- fold_df |> filter(.data[[strat_var]] == random_strategy)
-    line_df <- fold_df |>
-        filter(.data[[strat_var]] != random_strategy) |>
-        group_by(across(all_of(keys))) |>
-        summarise(score = summary_fun(score, na.rm = TRUE), .groups = "drop")
-
-    if (nrow(rand_df) == 0) {
+    if (!any(fold_df[[strat_var]] == random_strategy)) {
         stop("No rows for random_strategy '", random_strategy, "' in `scores`.")
     }
 
-    # 3. Reference line: no size_var column, so it is repeated in every row
+    # 2. Reference line (one value per panel, repeated across sizes)
     ref_line <- NULL
     if (!is.null(ref_scores)) {
         ref_line <- ref_scores |>
@@ -1003,14 +1183,17 @@ distribution_plot <- function(
         }
     }
 
-    # 4. Factor ordering
-    lvls <- if (is.null(strat_order)) {
-        sort(unique(line_df[[strat_var]]))
+    # 3. Factor ordering: random sampling first, then the other strategies
+    others <- setdiff(unique(fold_df[[strat_var]]), random_strategy)
+    other_lvls <- if (is.null(strat_order)) {
+        sort(others)
     } else {
-        intersect(strat_order, unique(line_df[[strat_var]]))
+        intersect(setdiff(strat_order, random_strategy), others)
     }
-    line_df[[strat_var]] <- factor(line_df[[strat_var]], levels = lvls)
-    
+    lvls <- c(random_strategy, other_lvls)
+    fold_df <- fold_df |> filter(.data[[strat_var]] %in% lvls)
+    fold_df[[strat_var]] <- factor(fold_df[[strat_var]], levels = lvls)
+
     set_panels <- function(df) {
         if (is.null(df)) return(df)
         df[[panel_var]] <- if (is.null(panel_order)) {
@@ -1020,53 +1203,297 @@ distribution_plot <- function(
         }
         df
     }
-    rand_df  <- set_panels(rand_df)
-    line_df  <- set_panels(line_df)
+    fold_df  <- set_panels(fold_df)
     ref_line <- set_panels(ref_line)
 
-    # 5. Plot
-    n_strat <- length(lvls)
-    p <- ggplot() +
-        geom_histogram(
-            data = rand_df, aes(x = score),
-            bins = bins, fill = "grey85", colour = "white") +
-        geom_vline(
-            data = line_df,
-            aes(xintercept = score, colour = .data[[strat_var]],
-                linetype = .data[[strat_var]]),
-            linewidth = 0.9)
+    # Fill colours: grey for random sampling, palette for the others
+    fills <- c("grey70", PALETTE[seq_along(other_lvls)])
+    names(fills) <- lvls
+
+    # 4. Plot (built in the vertical orientation, then flipped)
+    p <- ggplot(fold_df, aes(x = score, y = .data[[strat_var]],
+                            fill = .data[[strat_var]])) +
+        geom_violin(
+            orientation = "y",
+            scale = "width", trim = TRUE, colour = "grey30",
+            alpha = 0.7, linewidth = 0.4)
+
+    if (show_points) {
+        p <- p + geom_jitter(
+            width = 0, height = 0.12, size = 0.8,
+            alpha = 0.5, colour = "grey20")
+    }
+
+    p <- p + stat_summary(
+        fun = summary_fun, geom = "point", orientation = "y",
+        shape = 23, size = 2.5, fill = "white", colour = "black")
 
     if (!is.null(ref_line)) {
-        p <- p + geom_vline(
-            data = ref_line, aes(xintercept = score),
-            colour = "black", linetype = "dashed", linewidth = 0.7)
+        p <- p +
+            geom_vline(
+                data = ref_line,
+                aes(xintercept = score, linetype = ref_label),
+                colour = "black", linewidth = 0.7) +
+            scale_linetype_manual(
+                name = NULL,
+                values = setNames("dashed", ref_label))
     }
 
     p <- p +
         facet_grid(
             rows = vars(.data[[size_var]]),
             cols = vars(.data[[panel_var]]),
-            scales = "free",
+            scales = "free_x",   # x = score, shared within each column
             labeller = labeller(.rows = label_both)) +
         labs(
             title = metric,
             subtitle = paste0(
                 "(", if (lower_is_better) "lower" else "higher", " is better)"),
             x = paste0("Mean ", metric, " per fold"),
-            y = paste0("# of '", random_strategy, "' runs"),
-            colour = "Strategy", linetype = "Strategy",
+            y = NULL,
             caption = paste0(
-                "Grey histogram: '", random_strategy, "' runs ",
-                "(species-averaged, one value per k_fold).\n",
-                "Lines: other strategies (across-fold summary)",
-                if (!is.null(ref_line)) "; dashed black: reference model" else "",
-                "."))
+                "Violins: distribution over folds ",
+                "(species-averaged, one value per k_fold); ",
+                "points: individual folds; diamonds: summary."))
 
     p <- my_custom_ggplot_theme(p) +
-        scale_colour_manual(values = PALETTE[seq_len(n_strat)]) +
-        scale_linetype_manual(values = rep_len(c(1, 2, 3, 4, 5, 6), n_strat))
+        scale_fill_manual(values = fills, guide = "none") +
+        # first strategy at the top: reverse the discrete limits
+        scale_y_discrete(limits = rev(lvls)) +
+        theme(
+            legend.position = "inside",
+            legend.position.inside = c(0.99, 0.01),
+            legend.justification = c(1, 0),
+            legend.title = element_blank(),
+            legend.text = element_text(size = 8),
+            legend.key.size = unit(0.8, "lines"),
+            legend.key.width = unit(1.5, "lines"),
+            legend.background = element_rect(
+                fill = scales::alpha("white", 0.85), colour = "grey70"),
+            legend.margin = margin(2, 4, 2, 4))
 
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
-    list(data = list(random = rand_df, lines = line_df, reference = ref_line),
+    list(data = list(folds = fold_df, reference = ref_line),
          plot = p)
+}
+
+# Spearman rank correlation. Returns c(rho, p-value), or c(NA, NA) when it 
+# cannot be computed (fewer than 3 points, constant vector).
+# ARGS:
+#   - x, y: two vectors of the same size
+safe_spearman <- function(x, y) {
+    if (length(x) < 3 || sd(x) == 0 || sd(y) == 0) {
+        return(c(rho = NA_real_, p = NA_real_))
+    }
+    ct <- suppressWarnings(cor.test(x, y, method = "spearman", exact = FALSE))
+    c(rho = unname(ct$estimate), p = ct$p.value)
+}
+
+# A function that plots pre-computed (Fisher approx) against realised metrics.
+# Each point is one strategy, averaged over the k-folds. It reports the Spearman 
+# rank correlation between them: does the approximation rank the strategies 
+# like the retrained model does?
+# ARGS:
+#   - scores: a data.frame or tibble (e.g. compare_df).
+#       Must contain columns: name, score, k, strat_var, size_var, panel_var.
+#   - x_metric: a string. Name (in column "name") of the metric on the x-axis.
+#   - y_metric: a string. Name (in column "name") of the metric on the y-axis.
+#   - title, subtitle: strings. Plot title and subtitle.
+#   - x_label, y_label: strings. Axis labels (default: the metric names).
+#   - strat_var: a string. Column holding the strategies.
+#   - strat_order: a vector of strings. Order of the strategies in the legend.
+#   - size_var: a string. Column with the number of new samples.
+#   - panel_var: a string. Column with the subset.
+#   - panel_order: a vector of strings. Subsets to keep, and their order.
+#   - random_strategy: a string. Strategy drawn in grey (small points).
+#   - show_folds: a boolean. If TRUE, the value of each individual fold is 
+#       drawn as a small, transparent point behind the mean over folds.
+#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
+# RETURNS:
+#   - a list: 
+#       - data: one row per strategy (mean and SE across folds), 
+#       - data_folds: one row per strategy and fold,
+#       - stats: Spearman per panel, 
+#       - plot.
+#   One panel per (panel_var, size_var) combination, so that designs of
+#   different sizes are never ranked against each other.
+corr_metrics <- function(
+        scores, x_metric, y_metric, title = NULL, subtitle = NULL,
+        x_label = NULL, y_label = NULL,
+        strat_var = "STRATEGIES", strat_order = NULL,
+        size_var = "NEW_SAMPLE_SIZES",
+        panel_var = "subset", panel_order = NULL,
+        random_strategy = "random-sampling",
+        show_folds = TRUE,
+        save_to = NULL) {
+
+    # 1. One value per design and metric (aggregated over species)
+    keys <- unique(c("k", panel_var, size_var, strat_var))
+    per_design <- function(metric, new_name) {
+        scores |>
+            filter(name == metric) |>
+            group_by(across(all_of(keys))) |>
+            summarise(value = mean(score, na.rm = TRUE), .groups = "drop") |>
+            rename(!!new_name := value)
+    }
+    designs <- inner_join(
+        per_design(x_metric, "x"),
+        per_design(y_metric, "y"),
+        by = keys) |>
+        filter(is.finite(x), is.finite(y))
+
+    # Keep only folds where all strategies are present in the panel, 
+    # so that every strategy is averaged over the same folds
+    designs <- designs |>
+        group_by(across(all_of(c(panel_var, size_var)))) |>
+        mutate(.n_strat = n_distinct(.data[[strat_var]])) |>
+        group_by(across(all_of(c("k", panel_var, size_var)))) |>
+        filter(n_distinct(.data[[strat_var]]) == first(.n_strat)) |>
+        ungroup() |>
+        select(-.n_strat)
+
+    # Per-fold values, kept to draw the individual points
+    designs_folds <- designs
+
+    # Mean over folds, with the standard error across folds
+    designs <- designs |>
+        group_by(across(all_of(setdiff(keys, "k")))) |>
+        summarise(
+            n_folds = n(),
+            x_se = sd(x) / sqrt(n()),
+            y_se = sd(y) / sqrt(n()),
+            x = mean(x),
+            y = mean(y),
+            .groups = "drop")
+
+    # Stop if x_metric x y_metric does not exist
+    if (nrow(designs) == 0) {
+        stop("No design has both '", x_metric, "' and '", y_metric, "'.")
+    }
+
+    # Arange the designs per panel_order 
+    if (!is.null(panel_order)) {
+        designs <- designs |> filter(.data[[panel_var]] %in% panel_order)
+        designs_folds <- designs_folds |> 
+            filter(.data[[panel_var]] %in% panel_order)
+    }
+
+    # 2. Strategies: assign grey to random sampling, then get the others.
+    others <- setdiff(unique(designs[[strat_var]]), random_strategy)
+    other_lvls <- if (is.null(strat_order)) {
+        sort(others)
+    } else {
+        c(intersect(strat_order, others), setdiff(others, strat_order))
+    }
+    lvls <- c(intersect(random_strategy, unique(designs[[strat_var]])), other_lvls)
+    designs[[strat_var]] <- factor(designs[[strat_var]], levels = lvls)
+    designs_folds[[strat_var]] <- factor(designs_folds[[strat_var]], levels = lvls)
+    designs <- designs |> arrange(.data[[strat_var]])
+    designs_folds <- designs_folds |> arrange(.data[[strat_var]])
+
+    is_random <- lvls == random_strategy
+    colors <- setNames(
+        c(rep("grey40", sum(is_random)), rep_len(PALETTE, length(other_lvls))),
+        lvls)
+    point_sizes <- setNames(ifelse(is_random, 1.5, 3), lvls)
+
+    # 3. Spearman correlation per panel (size_var x panel_var)
+    # computed on the means over folds
+    panel_stats <- designs_folds |>
+        group_by(across(all_of(c(panel_var, size_var)))) |>
+        summarise(
+            n_designs = n(),
+            rho = safe_spearman(x, y)[["rho"]],
+            p = safe_spearman(x, y)[["p"]],
+            .groups = "drop") |>
+        mutate(.panel = sprintf(
+            "%s: %s | %s: %s\nSpearman = %.2f (p = %.2f)",
+            panel_var, .data[[panel_var]], size_var, .data[[size_var]], rho, p))
+    if (!is.null(panel_order)) {
+        panel_stats <- panel_stats |>
+            mutate(across(all_of(panel_var), ~ factor(.x, levels = panel_order)))
+    }
+    panel_stats <- panel_stats |>
+        arrange(across(all_of(c(panel_var, size_var)))) |>
+        mutate(.panel = factor(.panel, levels = unique(.panel)))
+
+    # Attach the panel labels to both tables
+    panel_labels <- panel_stats |>
+        select(all_of(c(panel_var, size_var)), .panel) |>
+        mutate(across(all_of(panel_var), as.character))
+    designs <- left_join(designs, panel_labels, by = c(panel_var, size_var))
+    designs_folds <- left_join(
+        designs_folds, panel_labels, by = c(panel_var, size_var))
+
+    # 4. Plot
+    # Individual folds: small, transparent, drawn first (= underneath), 
+    # no legend entry. NULL (ignored by ggplot) when hidden.
+    if (show_folds) {
+        fold_layer <-  geom_point(
+            data = designs_folds,
+            aes(colour = .data[[strat_var]]),
+            size = 0.8, alpha = 0.5, show.legend = FALSE)
+    } else {
+        fold_layer <- NULL
+    }
+
+    if (show_folds) {
+        caption <- paste0(
+            "Large points: mean over k-folds (bars: SE across folds).",
+            "Small points: individual folds.",
+            "Dotted line: linear fit on the means. ",
+            "\nSpearman's rank correlation computed with each k_fold (not the means).")
+    } else {
+        caption <- paste0(
+            "Large points: mean over k-folds (bars: SE across folds).",
+            "Dotted line: linear fit on the means. ",
+            "\nSpearman's rank correlation computed with each k_fold (not the means).")
+    }
+
+    p <- ggplot(designs, aes(x = x, y = y)) +
+        geom_abline(
+            intercept = 0, slope = 1,
+            colour = "grey60", linetype = "dotted", linewidth = 0.6,
+            inherit.aes = FALSE) +
+        fold_layer +
+        geom_linerange(
+            aes(ymin = y - y_se, ymax = y + y_se, colour = .data[[strat_var]]),
+            alpha = 0.4) +
+        geom_linerange(
+            aes(xmin = x - x_se, xmax = x + x_se, colour = .data[[strat_var]]),
+            orientation = "y", alpha = 0.4) +
+        geom_point(
+            aes(colour = .data[[strat_var]], size = .data[[strat_var]]),
+            alpha = 0.9) +
+        scale_colour_manual(values = colors, name = "Strategy") +
+        scale_size_manual(values = point_sizes, name = "Strategy") +
+        facet_wrap(vars(.panel), scales = "free") +
+        labs(
+            title = title,
+            subtitle = subtitle,
+            x = if (is.null(x_label)) x_metric else x_label,
+            y = if (is.null(y_label)) y_metric else y_label,
+            caption = caption)
+
+    p <- my_custom_ggplot_theme(p, with_palette = FALSE)
+
+    if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
+    list(
+        data = designs, data_folds = designs_folds, 
+        stats = panel_stats, plot = p)
+}
+
+# A custom helper for transform_scale parameters (transforms a linear color
+# scale into a mirrored log one, starting at offset_high).
+# ARGS:
+#   - offset_high: a numeric. The starting point of the log scale (reversed).
+# RETURNS:
+#   - a scales::new_transform() object.
+mirrored_log_trans <- function(offset_high) {
+  scales::new_transform(
+    name      = paste0("mirrored_log_", offset_high),
+    transform = function(x) -log(offset_high - x),
+    inverse   = function(x) offset_high - exp(-x),
+    domain    = c(-Inf, offset_high)  # strictly below offset_high
+  )
 }

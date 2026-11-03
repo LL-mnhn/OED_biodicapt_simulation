@@ -269,7 +269,7 @@ combined_training_data <- vect(list(
 ))
 combined_training_data <- combined_training_data[X_VARIABLES]
 X_BN <- fit_transforms(combined_training_data)
-saveRDS(X_BN, file.path(EXPLORE_PATH, "bestnormalize_fits.rds"))
+saveRDS(X_BN, file.path(EXPLORE_PATH, "best_normalised_fits.rds"))
 
 # Get new units
 X_TRANSFORMED_UNITS <- X_UNITS
@@ -296,6 +296,13 @@ for (p in seq_along(FULL_PATHS)) {
     } else if (endsWith(FULL_PATHS[p], '.gpkg')) {
         data <- vect(FULL_PATHS[p])
         data <- transform_dataset(data)
+
+        # files with data points should not contain NAs
+        if (anyNA(as.data.frame(data[X_VARIABLES]))) {
+            stop(paste(
+                "Transformation created NA(s) from", FULL_PATHS[p], 
+                "aborting operation."))
+        }
         writeVector(data, TRF_PATHS[p], overwrite = TRUE)
     } else {
         stop("Unknown type of dataset.")
@@ -327,13 +334,13 @@ for (comb in names(combined_paths)) {
     print(hist_grid_plot)
     standardised_ggplot_save(
         hist_grid_plot, 
-        file.path(EXPLORE_PATH, paste0(comb, "hist_on_biodicap&eni500.pdf")))
+        file.path(EXPLORE_PATH, paste0(comb, "_hist_on_biodicap&eni500.pdf")))
 
     qqplot_grid_plot <- qqplot_covariables(sample_pool_df)
     print(qqplot_grid_plot)
     standardised_ggplot_save(
         qqplot_grid_plot, 
-        file.path(EXPLORE_PATH, paste0(comb, "qqplot_on_biodicap&eni500.pdf")))
+        file.path(EXPLORE_PATH, paste0(comb, "_qqplot_on_biodicap&eni500.pdf")))
     
 }
 cli_alert_success("Plots are ready!\n\n")
@@ -354,11 +361,15 @@ plots <- lapply(seq_along(names(t_envs_raster)), function(i) {
     n <- names(t_envs_raster)[i]
 
     p <- ggplot() +
-        geom_spatraster(data = t_envs_raster[[i]]) +
+        geom_spatraster(data = clip_raster_to_france_shape(
+                                    t_envs_raster[[i]], 
+                                    buffer = 0)) +
         ggtitle(n) +
-        scale_fill_viridis_c(
-        option = "magma",
-        name = t_envs_units[[i]]
+        scale_fill_gradientn(
+            colours = CONTRASTED_PLASMA_COLOURS,
+            trans    = "identity",
+            name    = t_envs_units[[i]],
+            na.value = "transparent",
         )
 
     my_custom_ggplot_theme(p, with_palette = FALSE) +
@@ -368,6 +379,7 @@ standardised_ggplot_save(
     wrap_plots(plots), 
     file.path(EXPLORE_PATH, "env_raster_layers_vtransform.pdf"), 
     .width = 36, .height = 12)
+print(wrap_plots(plots))
 
 
 ##### Computing PCA (for `virtualspecies`) ##### ------------------------------
@@ -389,11 +401,13 @@ t_stoc_df <- fix_names(vect(STOC_OBS_TRF))
 
 # Plot ellipsoids
 ellipses_pca_plot <- ellipses_of_all_covariables(result_pca, t_stoc_df)
-print(ellipses_pca_plot)
 standardised_ggplot_save(
-    ellipses_pca_plot, file.path(EXPLORE_PATH, "pca_ellipses_stoc.pdf"))
-project_on_existing_pca(
+    ellipses_pca_plot, file.path(EXPLORE_PATH, "ellipses_stoc.pdf"))
+projected <- project_on_existing_pca(
     result_pca$pca, result_pca$plot_ind, t_stoc_df, group = NULL)
+print(projected$sp_plot_ind)
+standardised_ggplot_save(
+    projected$sp_plot_ind, file.path(EXPLORE_PATH, "pca_ellipses_stoc.pdf"))
 
 ### Plot all densities
 densities_plot <- histogram_covariables_plus_densities(
@@ -402,13 +416,13 @@ print(densities_plot)
 standardised_ggplot_save(densities_plot, 
     file.path(EXPLORE_PATH, "hist_rasters_and_stoc.pdf"))
 
-
 ### Plot observed rank-occurence curve 
 # (proxy to rank-abundance for presence/absence data)
 rank_occurence_plot <- rank_occurence_curves(t_stoc_df, fix_names(NAMES_SPECIES))
 standardised_ggplot_save(
     rank_occurence_plot$roc_plot, 
     file.path(EXPLORE_PATH, "rank-occurence_stoc.pdf"))
+print(rank_occurence_plot$roc_plot)
 write_csv(
     rank_occurence_plot$occ_table, 
     file.path(EXPLORE_PATH, "rank-occurence_stoc.csv"))

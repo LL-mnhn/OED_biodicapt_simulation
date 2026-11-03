@@ -185,14 +185,20 @@ check_elevation_raster <- function(){
         cli_alert_danger(
             paste0("File '", ELEVATION_FILEPATH, "' was not found!\n"))
         cli_alert_warning("Auto-download...")
-        extent_df <- data.frame(
-            x = c(LON_MIN, LON_MAX), y = c(LAT_MIN, LAT_MAX))
+
+        # France extent with buffer around borders
+        france_sf <- get_metropolitan_france_shapefile()
+        france_sf_buffered <- france_sf |>
+            st_transform(PROJECT_CRS) |>       # equal-area CRS (distances in meters)
+            st_buffer(dist = BUFFER_SIZE*1.25) # buffer distance in meters (+25% since it is the raw raster)
         raster_elevation <- rast(get_elev_raster(
-            locations = extent_df,
+            locations = france_sf_buffered,
             z = ELEVATION_ZOOM_LEVEL,       
             prj = PROJECT_CRS,
             clip = "bbox"))
-        writeRaster(raster_elevation, ELEVATION_FILEPATH)
+        cropped_raster_elevation <- crop(
+            raster_elevation, ext(france_sf_buffered), extend = TRUE)
+        writeRaster(cropped_raster_elevation, ELEVATION_FILEPATH)
     }
     cli_alert_success("Raw elevation file is available.\n\n")
 }
@@ -230,6 +236,19 @@ check_species_data <- function() {
     cli_alert_success("Raw STOC dataframe is available.\n\n")
 }
 
+check_pesticide_data <- function() {
+    cli_alert_info("Checking Pesticide data file...")
+
+    # Check if file exists
+    if (!file.exists(PESTICIDE_FILEPATH)) {
+        cli_alert_danger(paste0("File '", PESTICIDE_FILEPATH, "' was not found!\n"))
+        cli_alert_warning("If needed, download file from https://datadryad.org/dataset/doi:10.5061/dryad.g4f4qrg0p.")
+        stop("Tip: did you create the necessary folders for the files?")
+    }
+
+    cli_alert_success("Raw Pesticide shapefile is available.\n\n")
+}
+
 
 ##### Verify each dataset ##### -----------------------------------------------
 if (length(list.files(RAW_DATA_PATH)) == 0) {
@@ -265,6 +284,9 @@ if (length(list.files(RAW_DATA_PATH)) == 0) {
 
     # 9. Species absence-presence dataset
     . <- check_species_data()
+
+    # 10. Pesticide map
+    . <- check_pesticide_data()
 }
 
 cli_alert_success("File '0-verify_datasets.R' finished running!\n\n")

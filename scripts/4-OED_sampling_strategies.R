@@ -56,31 +56,8 @@ EFFECTS <- list(
         NEW_SAMPLE_SIZES = c(10, 25, 50, 100, 150),
         STRATEGIES = c(
             "random-sampling", "gap-filling", "max-uncertainty", 
-            "3-part-max-uncertainty", "5-part-max-uncertainty",
-            "ds-optimality", "i-optimality")
-    )
-)
-REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
-saveRDS(EFFECTS, file.path(RESULTS_PATH, "effects.rds"))
-
-
-##### TEMP OVERRIDE OF PARAMETERS ##### ---------------------------------------
-cli_alert_danger("TEMPORARY OVERRIDE OF PARAMETERS, DO NOT PUSH.")
-# Each list is a combination of parameters to use to train the model
-NCHAINS <- 3
-EFFECTS <- list(
-    # Reference effects (ALWAYS the first element)
-    list(
-        R_EFFECTS = c("site"), 
-        NEW_SAMPLE_SIZES = c(0),
-        STRATEGIES = c("none")
-    ),
-    # Add new samples according to different strategies
-    list(
-        R_EFFECTS = c("site"), 
-        NEW_SAMPLE_SIZES = c(50),
-        STRATEGIES = c("random-sampling", "max-uncertainty",
-                       "ds-optimality", "i-optimality")
+            "2-part-max-uncertainty", "5-part-max-uncertainty",
+            "10-part-max-uncertainty", "ds-optimality", "i-optimality")
     )
 )
 REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
@@ -89,7 +66,7 @@ saveRDS(EFFECTS, file.path(RESULTS_PATH, "effects.rds"))
 
 ##### Local functions ##### ---------------------------------------------------
 # A function that prepares datasets (samples random observations on each site)
-prepare_datasets <- function(detection_probability = 0.95) {
+prepare_datasets <- function() {
     # load simulated presence_absence maps (dont forget to unwrap SpatRasters)
     pa_obs <- unwrap_simulations(readRDS(
         file.path(SIMULATE_PATH, "simulations.rds")))$sp_observations
@@ -101,9 +78,9 @@ prepare_datasets <- function(detection_probability = 0.95) {
     all_datasets <- vector("list", K_FOLDS)
     for (k in 1:K_FOLDS) {
         # initialise locations (useless columns will be removed)
-        biodicapt_df <- fix_names(vect(BIODICAPT_OBS_TRF))
-        eni500_df <- fix_names(vect(ENI500_OBS_TRF))
-        stoc_df <- fix_names(vect(STOC_OBS_TRF))
+        biodicapt_vec <- fix_names(vect(BIODICAPT_OBS_TRF))
+        eni500_vec <- fix_names(vect(ENI500_OBS_TRF))
+        stoc_vec <- fix_names(vect(STOC_OBS_TRF))
         
         for (sp_i in 1:length(NAME_SP_SIMUL)) {
             cli_status_update(
@@ -112,33 +89,49 @@ prepare_datasets <- function(detection_probability = 0.95) {
                     "[k-fold {k}/{K_FOLDS}]: Observation of sp {sp_i}/{length(NAME_SP_SIMUL)}...")
             )
             # Use CustomSampleOccurences for fixed locations
-            biodicapt_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            biodicapt_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                biodicapt_df,
-                detection.probability = detection_probability
+                biodicapt_vec,
+                detection.probability = PROBABILITY_TP,
+                error.probability = PROBABILITY_FP
             )
-            eni500_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            eni500_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                eni500_df,
-                detection.probability = detection_probability
+                eni500_vec,
+                detection.probability = PROBABILITY_TP,
+                error.probability = PROBABILITY_FP
             )
-            stoc_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+            stoc_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
                 pa_obs[[k]][[paste0("sp_", sp_i)]],
-                stoc_df,
-                detection.probability = detection_probability
+                stoc_vec,
+                detection.probability = PROBABILITY_TP,
+                error.probability = PROBABILITY_FP
             )
         }
 
         # clean columns
-        all_datasets[[k]]$train <- biodicapt_df |>
+        all_datasets[[k]]$train <- biodicapt_vec |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_biodicapt_", 1:nrow(biodicapt_df)))
-        all_datasets[[k]]$new_pool <- eni500_df |>
+            mutate(row_id = paste0("id_biodicapt_", 1:nrow(biodicapt_vec)))
+        all_datasets[[k]]$new_pool <- eni500_vec |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_eni500_", 1:nrow(eni500_df)))
-        all_datasets[[k]]$test <- stoc_df |>
+            mutate(row_id = paste0("id_eni500_", 1:nrow(eni500_vec)))
+        all_datasets[[k]]$test <- stoc_vec |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
-            mutate(row_id = paste0("id_stoc_", 1:nrow(stoc_df)))
+            mutate(row_id = paste0("id_stoc_", 1:nrow(stoc_vec)))
+
+        if( (sum(is.na(as.data.frame(all_datasets[[k]]$train))) + 
+            sum(is.na(as.data.frame(all_datasets[[k]]$new_pool))) + 
+            sum(is.na(as.data.frame(all_datasets[[k]]$test)))) > 0) {
+            stop(paste0("[Security]: NAs detected in observations."))
+            
+            # problems in new_pool
+            plot(pa_obs[[1]]$sp_1 < 2)
+
+            selection <- which(is.na(all_datasets[[k]]$test$mean_tii))
+            sel_points <- all_datasets[[k]]$test[selection, ]
+            points(sel_points, col = "red", pch =16, cex=1.5)
+        }
     }
 
     cli_status_clear(status_msg)
@@ -167,7 +160,7 @@ prepare_datasets <- function(detection_probability = 0.95) {
 #   - base_subset with the selected rows of extension_subset appended.
 extended_training_design <- function(
     strat, base_subset, extension_subset, new_sample_size, variables, hM,
-    actionable = ACTIONABLE_VARIABLES, target_set = NULL) {
+    actionable = ACTIONABLE_VARIABLES, target_set = NULL, random_seed = 42) {
     strat <- tolower(strat)
 
     # dataset changes depending on chosen strat
@@ -178,9 +171,15 @@ extended_training_design <- function(
         # Random sampling: choose points at random
         cli_alert_info(
             paste0("Pulling ", new_sample_size, " new random samples..."))
-        extended_set <- bind_rows(
-            base_subset,
-            extension_subset |> slice_sample(n = new_sample_size))
+        candidates <- extension_subset[
+            complete.cases(extension_subset[variables]), ]
+        
+        # WARNING : fixed random draw everytime so that the selected sites are
+        #           always the same ones. (Its ok because its not the strategy
+        #           that should perform well anyway).
+        idx_random <- withr::with_seed(
+            random_seed, sample.int(nrow(candidates)))[seq_len(new_sample_size)]
+        extended_set <- bind_rows(base_subset, candidates[idx_random, ])
         
     } else if (strat == "gap-filling") {
         # Gap-filling: select points that are the farthest from current design

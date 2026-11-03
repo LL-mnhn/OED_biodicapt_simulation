@@ -49,7 +49,9 @@ plot_virtualspecies_rasters <- function() {
 
         plots <- lapply(seq_along(rasters), function(i) {
             p <- ggplot() +
-            geom_spatraster(data = rasters[[i]]) +
+            geom_spatraster(data = clip_raster_to_france_shape(
+                                        rasters[[i]], 
+                                        buffer = 0)) +
             ggtitle(layer_names[i]) +
             scale_fill_stepsn(
                 colours = GG_TERRAIN_PALETTE,
@@ -92,10 +94,11 @@ cli_alert_info("Simulation of species distributions...")
 
 ### 1. Use base virtualspecies::generateSpFromPCA function 
 #       - This function does all the work for us, we just need to specify
-#           species.prevalence to mimic our observed species prevalence
+#         species.prevalence to mimic our observed species prevalence
 simulations <- simulate_from_PCA(
     raster_stack = envs_t_raster_subres, 
     precomputed_pca = env_pca, 
+    sites = stoc_df,
     n_sp = length(NAMES_SPECIES), 
     prevalences = stoc_occurences$freq_occurrence)
 
@@ -105,6 +108,7 @@ saveRDS(
     file = file.path(SIMULATE_PATH, "simulations.rds"))
 plot_virtualspecies_rasters()
 
+cli_alert_info("Computing rank occurences...")
 # compare occurences with stoc_df
 stoc_simulations <- list()
 for (k in 1:K_FOLDS) {
@@ -115,7 +119,8 @@ for (k in 1:K_FOLDS) {
         local_simul_obs_df[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
             simulations$sp_observations[[k]][[paste0("sp_", sp_i)]],
             stoc_df,
-            detection.probability = 0.95
+            detection.probability = PROBABILITY_TP,
+            error.probability = PROBABILITY_FP
         )
 
     }
@@ -133,3 +138,5 @@ print(sim_rank_occurence_plot$roc_plot)
 standardised_ggplot_save(
     sim_rank_occurence_plot$roc_plot, 
     file.path(SIMULATE_PATH, "sim_rank-occurence_stoc.pdf"))
+
+cli_alert_success("Simulations are ready!\n\n")

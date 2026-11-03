@@ -851,9 +851,12 @@ evaluate_hmsc_performances <- function(
 #   - M0: array (p x p x n_species), current information matrices.
 #   - w: matrix (n_candidates x n_species), information weights.
 #   - beta_hat: matrix (p x n_species), posterior mean of Beta (standardised X).
-#   - standardise: function turning a dataframe into a standardised design 
-#       matrix (re-used for any other set of sites, e.g. the I-opt target).
-get_hmsc_information <- function(hM, newdata, x_cols) {
+#   - scaling_data: a dataframe with columns x_cols, or NULL (default). The 
+#       means and SDs used to standardise X are computed on this dataset. When 
+#       NULL, the training data of the model are used. Use a COMMON dataset to
+#       compare models trained on different sites: the value of Ds, for 
+#       example, shifts by a constant that depends on the scaling used.
+get_hmsc_information <- function(hM, newdata, x_cols, scaling_data = NULL) {
     if (!inherits(hM, "Hmsc")) {
         stop("'hM' must be a fitted Hmsc object.")
     }
@@ -866,7 +869,7 @@ get_hmsc_information <- function(hM, newdata, x_cols) {
     }
 
     # Posterior of Beta on the standardised scale of X
-    sp <- get_standardised_posterior(hM, x_cols)
+    sp <- get_standardised_posterior(hM, x_cols, scaling_data)
     beta_std <- sp$beta_std
     standardise <- sp$standardise
     p <- dim(beta_std)[1]
@@ -892,7 +895,13 @@ get_hmsc_information <- function(hM, newdata, x_cols) {
     }
     w <- 1 / (1 / w + matrix(g, nrow(w), ns, byrow = TRUE))
 
-    list(X = X, M0 = M0, w = w, beta_hat = beta_hat, standardise = standardise)
+    list(
+        X = X, 
+        M0 = M0, 
+        w = w, 
+        beta_hat = beta_hat, 
+        standardise = standardise,
+        spNames = hM$spNames)
 }
 
 # A to compute weights for a probit regression model
@@ -954,6 +963,7 @@ get_prediction_moments <- function(info, target) {
 greedy_design <- function(
         M0, X, w, n_select, criterion = c("ds", "i"), 
         idx_params = NULL, B = NULL, species_weights = NULL) {
+    
     criterion <- match.arg(criterion)
     ns <- dim(M0)[3]
     if (is.null(species_weights)) species_weights <- rep(1 / ns, ns)
@@ -974,15 +984,15 @@ greedy_design <- function(
 
         for (j in seq_len(ns)) {
             Minv <- solve(M[, , j])
-            A <- Minv %*% t(Xc)                                # p x m
-            q <- 1 / w[cand_left, j] + colSums(t(Xc) * A)      # 1/w + x'M^-1x
+            br <- Minv %*% t(Xc)                                                 # M^-1 * r
+            q <- 1 / w[cand_left, j] + colSums(t(Xc) * br)                       # 1/w + x'M^-1x
             if (criterion == "ds") {
-                S <- solve(Minv[idx_params, idx_params, drop = FALSE])
-                aS <- A[idx_params, , drop = FALSE]
-                ratio <- colSums(aS * (S %*% aS)) / q
+                schur_comp <- solve(Minv[idx_params, idx_params, drop = FALSE]) # M_{1|2}
+                a <- br[idx_params, , drop = FALSE]                              # M^{-1} x
+                ratio <- colSums(a * (schur_comp %*% a)) / q
                 gain_j <- -log(pmax(1 - ratio, 1e-12))
             } else {
-                gain_j <- colSums(A * (B[, , j] %*% A)) / q
+                gain_j <- colSums(br * (B[, , j] %*% br)) / q
             }
             gain <- gain + species_weights[j] * gain_j
         }
@@ -996,6 +1006,46 @@ greedy_design <- function(
         cand_left <- cand_left[-best]
     }
     selected
+}
+
+# A function that computes the *expected* (approximated) Ds and I criteria of a 
+# design: the values predicted by the reference model once a set of sites is 
+# added to its training data. These are the quantities that greedy_design() 
+# optimises, as opposed to the "realised" ones measured on the re-trained model 
+# (see get_posterior_design_metrics).
+# ARGS:
+#   - info: output of get_hmsc_information(), computed on the added sites 
+#       (so that info$X and info$w describe them), with the reference model.
+#   - actionable: a vector of strings, the parameters of interest for the 
+#       Ds-criterion.
+#   - target: a dataframe of target sites for the I-criterion (columns x_cols, 
+#       no NAs), or NULL to skip I. Use the dataset on which the realised I 
+#       is computed to compare them.
+# RETURNS:
+#   - a list of named vectors (one value per species): Ds_expected, I_expected.
+get_expected_design_metrics <- function(info, actionable, target = NULL) {
+    idx_act <- match(actionable, colnames(info$X))
+    if (anyNA(idx_act)) {
+        stop("`actionable` contains variables absent from the model.")
+    }
+    ns <- dim(info$M0)[3]
+    B <- if (!is.null(target)) get_prediction_moments(info, target) else NULL
+
+    Ds <- I <- rep(NA_real_, ns)
+    for (j in seq_len(ns)) {
+        # M_new = M0 + sum_i w_ij x_i x_i'
+        M_new <- info$M0[, , j] + crossprod(info$X, info$X * info$w[, j])
+        Minv <- solve(M_new)
+        Ds[j] <- as.numeric(determinant(
+            solve(Minv[idx_act, idx_act, drop = FALSE]), 
+            logarithm = TRUE)$modulus)
+        if (!is.null(B)) {
+            I[j] <- sum(Minv * B[, , j])   # tr(Minv B), both symmetric
+        }
+    }
+    out <- list(Ds_expected = Ds)
+    if (!is.null(B)) out$I_expected <- I
+    lapply(out, function(v) setNames(v, info$spNames))
 }
 
 

@@ -47,9 +47,13 @@ unwrap_simulations <- function(data_wrapped) {
 #   - df: a SpatVector containing the point location to be sampled.
 #   - detection.probability: a numeric value between 0 and 1, 
 #       corresponding to the probability of detection of the species.
+#   - error.probability: a numeric value between 0 and 1, 
+#       corresponding to the probability of detecting a species that is not 
+#       there in reality.
 # RETURNS:
 #   - a vector of observations/detections (contains values of 0/NA or 1)
-customSampleOccurrences <- function(vsp_map, df, detection.probability) {
+customSampleOccurrences <- function(
+    vsp_map, df, detection.probability, error.probability) {
     if (!inherits(df, "SpatVector")) {
         stop("'df' is not a SpatVector object.")
     }
@@ -71,10 +75,34 @@ customSampleOccurrences <- function(vsp_map, df, detection.probability) {
     detected <- ifelse(
         pa_vals == 1,
         rbinom(length(pa_vals), 1, prob = detection.probability),
-        0
+        rbinom(length(pa_vals), 1, prob = error.probability)
     )
 
     return(detected)
+}
+
+# A function that mimics virtualspecies::convertToPA but uses a specific set
+# of sites to compute prevalences, isntead of the whole raster
+# ARGS:
+#   - vspsuit_rast_map: a SpatRaster object.
+#       A suitability layer from virtualspecies (0-1 values, and NAs)
+#   - sites: a SpatVector containing the point location to be sampled.
+#   - target: a numeric between 0 and 1, the target proportion.
+#   - alpha: a numeric, defines the slope of the logistic curve.
+#   - detection: a numeric value between 0 and 1 corresponding to the 
+#       probability of detection of the species.
+# RETURNS:
+#   - a vector of observations/detections (contains values of 0/NA or 1)
+calibrate_beta_to_sites <- function(
+        suit_rast, 
+        sites, 
+        target,
+        alpha = -0.05, 
+        detection = 1) {
+    s <- terra::extract(suit_rast, sites)[, 2]
+    s <- s[!is.na(s)]
+    f <- function(beta) mean(1 / (1 + exp((s - beta) / alpha))) * detection - target
+    uniroot(f, interval = c(-1, 2))$root
 }
 
 # A function that generates random observations of virtualspecies generated
@@ -84,6 +112,8 @@ customSampleOccurrences <- function(vsp_map, df, detection.probability) {
 #       Each layer must be a numeric.
 #   - precomputed_pca: a dudi.pca object (computed from raster_stack values).
 #   - n_sp: an integer >0. The number of species to simulate.
+#   - sites: a SpatVector, the locations to sample prevalences.
+#       Default is NULL (uses the whole raster).
 #   - prevalences: a set of values between 0 and 1. The target frequency of 
 #       occurence for each generated species. 
 #       Must have length(prevalences) = n_sp.
@@ -91,10 +121,12 @@ customSampleOccurrences <- function(vsp_map, df, detection.probability) {
 #   - sp_params: means and sds for the ellipsoids of each species
 #   - k_sp_obs: 
 simulate_from_PCA <- function(
-        raster_stack, precomputed_pca, n_sp, prevalences, 
-        k_folds = K_FOLDS, max_draws = 30, min_suit = 0.25, seed = 42) {
-    # Check parameters
+        raster_stack, precomputed_pca, n_sp, prevalences, sites = NULL,
+        k_folds = K_FOLDS, max_draws = 99, min_suit = 0.25, seed = 42) {
+    # Global parameter
+    alpha = -0.05
     
+    # Check parameters
     set.seed(seed)
     k_simulations <- list(
         sp_params = list(), 
@@ -120,10 +152,12 @@ simulate_from_PCA <- function(
             # With a set of given prevalences, suitability has to reach
             # a minimum level, or it will just be a random draw of presence-
             # absence in each cell, and the map will just be noise.
-            draw_suitability <- TRUE
+            target <- prevalences[sp_i]
+            accepted <- FALSE
             draw <- 0
-            while (draw_suitability && (draw < max_draws)) {
-                draw_suitability <- FALSE
+            beta <- NA
+            while (!accepted && (draw < max_draws)) {
+                accepted <- TRUE
                 draw <- draw + 1
                 cli_status_update(
                     status_msg, 
@@ -139,28 +173,48 @@ simulate_from_PCA <- function(
                     plot = FALSE
                 ))
 
-                s <- as.vector(values(suitability$suitab.raster))
+                # Suitability values where prevalence is evaluated
+                if (is.null(sites)) {
+                    s <- as.vector(terra::values(suitability$suitab.raster))
+                } else {
+                    s <- terra::extract(suitability$suitab.raster, sites)[, 2]
+                }
                 s <- s[!is.na(s)]
 
                 # If suitability of the marginal cell (the least suitable cell
                 # that can still qualify as "presence" data under the chosen 
-                # target prevalence) is inferior to threshold, reject draw
-                if (quantile(s, 1 - prevalences[sp_i]) < min_suit) {
-                    draw_suitability <- TRUE
+                # target prevalence) is inferior to threshold, re-draw
+                if (quantile(s, 1 - target) < min_suit) {
+                    accepted <- FALSE
+                    next
                 }
 
                 # If the proportion of cells with high suitability (> 50%) is
                 # clearly larger than the target prevalence needs, then the 
-                # distribution risks being very sparse, reject draw.
-                frac_high <- mean(s > 0.5)
-                if (frac_high > 3 * prevalences[sp_i]) {    
-                    draw_suitability <- TRUE
+                # distribution risks being very sparse, re-draw.
+                if (mean(s > 0.5) > 3 * target) {    
+                    accepted <- FALSE
+                    next
+                }
+
+                # Compute beta manually for sites
+                if (!is.null(sites)) {
+                    # Use a custom function that computes prevalence on sites
+                    # An infeasible niche makes uniroot fail: just redraw
+                    beta <- tryCatch(
+                        calibrate_beta_to_sites(
+                            suit_rast = suitability$suitab.raster, 
+                            sites = sites, 
+                            target = target,
+                            alpha = alpha),
+                        error = function(e) NA)
+                    accepted <- !is.na(beta)
                 }
             }
-            if (draw >= max_draws) {
-                cli_alert_warning("[k-fold {k}/{k_folds}]: Exceeded max number of draws for {sp_i} of {n_sp}...")
+            if (!accepted) {
+                cli_alert_warning("[k-fold {k}/{k_folds}]: Exceeded max number of draws for {sp_i} of {n_sp}.")
+                stop("Prevalence could not be fitted to given target.")
             }
-
 
             # Store the coordinates that were picked for the ellipsoid
             k_sp_params[[paste0("sp_", sp_i)]] <- list(
@@ -169,18 +223,29 @@ simulate_from_PCA <- function(
             )
 
             # Determine presence-absence based on target species prevalence
-            # (virtualspecies auto solves alpha and beta to match prevalence)
-            results_PA <- suppressMessages(convertToPA(
-                suitability,
-                PA.method = "probability",
-                prob.method = "logistic",
-                alpha = -0.05,
-                species.prevalence = prevalences[sp_i], 
-                plot = FALSE))
-            k_sp_suit[[paste0("sp_", sp_i)]] <- results_PA$suitab.raster
-            k_sp_prob[[paste0("sp_", sp_i)]] <- results_PA$probability.of.occurrence
-            k_sp_conv[[paste0("sp_", sp_i)]] <- results_PA$PA.conversion
-            k_sp_obs[[paste0("sp_", sp_i)]] <- results_PA$pa.raster
+            if (is.null(sites)){
+                # use virtualspecies default function
+                results_PA <- suppressMessages(convertToPA(
+                    suitability,
+                    PA.method = "probability",
+                    prob.method = "logistic",
+                    alpha = alpha,
+                    species.prevalence = target, 
+                    plot = FALSE))
+                k_sp_suit[[paste0("sp_", sp_i)]] <- results_PA$suitab.raster
+                k_sp_prob[[paste0("sp_", sp_i)]] <- results_PA$probability.of.occurrence
+                k_sp_conv[[paste0("sp_", sp_i)]] <- results_PA$PA.conversion
+                k_sp_obs[[paste0("sp_", sp_i)]] <- results_PA$pa.raster
+
+            } else {
+                prob_rast <- 1 / (1 + exp((suitability$suitab.raster - beta) / alpha))
+                pa_rast <- terra::app(prob_rast, function(p) rbinom(length(p), 1, p))
+                
+                k_sp_suit[[paste0("sp_", sp_i)]] <- suitability$suitab.raster
+                k_sp_prob[[paste0("sp_", sp_i)]] <- prob_rast
+                k_sp_conv[[paste0("sp_", sp_i)]] <- list(alpha = alpha, beta = beta)
+                k_sp_obs[[paste0("sp_", sp_i)]]  <- pa_rast
+            }
         }
         k_simulations$sp_params[[k]] <- k_sp_params
         k_simulations$sp_suitability[[k]] <- k_sp_suit

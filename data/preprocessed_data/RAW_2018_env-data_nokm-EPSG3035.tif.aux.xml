@@ -8,7 +8,7 @@
         <Usage>0</Usage>
       </FieldDefn>
       <FieldDefn index="1">
-        <Name>CLC</Name>
+        <Name>clc</Name>
         <Type>2</Type>
         <Usage>0</Usage>
       </FieldDefn>
@@ -131,48 +131,51 @@
     <Description>distance.to.heterogeneous.agricultural.areas</Description>
   </PAMRasterBand>
   <PAMRasterBand band="10">
-    <Description>prop_artificial.surfaces_within_7071m</Description>
+    <Description>prop.artificial.surfaces.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="11">
-    <Description>prop_forest.and.semi.natural.areas_within_7071m</Description>
+    <Description>prop.forest.and.semi.natural.areas.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="12">
-    <Description>prop_wetlands_within_7071m</Description>
+    <Description>prop.wetlands.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="13">
-    <Description>prop_water.bodies_within_7071m</Description>
+    <Description>prop.water.bodies.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="14">
-    <Description>prop_arable.land_within_7071m</Description>
+    <Description>prop.arable.land.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="15">
-    <Description>prop_permanent.crops_within_7071m</Description>
+    <Description>prop.permanent.crops.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="16">
-    <Description>prop_pastures_within_7071m</Description>
+    <Description>prop.pastures.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="17">
-    <Description>prop_heterogeneous.agricultural.areas_within_7071m</Description>
+    <Description>prop.heterogeneous.agricultural.areas.within.7071m</Description>
   </PAMRasterBand>
   <PAMRasterBand band="18">
-    <Description>chelsa_hurs</Description>
+    <Description>chelsa.hurs.annual</Description>
   </PAMRasterBand>
   <PAMRasterBand band="19">
-    <Description>chelsa_pr</Description>
+    <Description>chelsa.pr.annual</Description>
   </PAMRasterBand>
   <PAMRasterBand band="20">
-    <Description>chelsa_tas</Description>
+    <Description>chelsa.tas.annual</Description>
   </PAMRasterBand>
   <PAMRasterBand band="21">
-    <Description>ndvi</Description>
+    <Description>ndvi.annual</Description>
   </PAMRasterBand>
   <PAMRasterBand band="22">
     <Description>elevation</Description>
   </PAMRasterBand>
   <PAMRasterBand band="23">
-    <Description>light_pollution</Description>
+    <Description>light.pollution</Description>
   </PAMRasterBand>
   <PAMRasterBand band="24">
     <Description>swf</Description>
+  </PAMRasterBand>
+  <PAMRasterBand band="25">
+    <Description>pesticides</Description>
   </PAMRasterBand>
 </PAMDataset>
