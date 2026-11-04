@@ -533,14 +533,16 @@ make_umap_and_plots <- function(
 # RETURNS:
 #   - a data.frame.
 to_long <- function(df, group_label = NULL, group_col = "k_folds") {
+    vars <- intersect(X_VARIABLES, names(df))
+
     out <- df |>
-        select(any_of(group_col), all_of(X_VARIABLES)) |>
+        select(any_of(group_col), all_of(vars)) |>
         pivot_longer(
-            cols = all_of(X_VARIABLES),
+            cols = all_of(vars),
             names_to = "variable",
             values_to = "value"
         ) |>
-        mutate(variable = factor(variable, levels = X_VARIABLES))
+        mutate(variable = factor(variable, levels = vars))
 
     if (!is.null(group_label)) out[[group_col]] <- group_label
     out[[group_col]] <- as.character(out[[group_col]])

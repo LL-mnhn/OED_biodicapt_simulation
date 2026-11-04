@@ -231,7 +231,7 @@ fetch_all_new_samples_id <- function() {
     return(all_new_samples_df)
 }
 
-show_map_selected_new_pool <- function(complete_new_pool) {
+show_map_selected_new_pool <- function(complete_new_pool, save_to = NULL) {
     # new pool of points
     available_points <- ggplot_categorical_df_on_background_map(
             background_map = ggplot_get_france_base_map(), 
@@ -271,56 +271,282 @@ show_map_selected_new_pool <- function(complete_new_pool) {
         facet_formula = new_samples_size ~ strategies
     )
     print(plot_grid)
-    standardised_ggplot_save(
-        plot_grid, 
-        file.path(
-            ANALYSES_PATH, 
-            "freq-new-locations-.pdf"
-        )
-    )
-
+    if (!is.null(save_to)) {
+        standardised_ggplot_save(plot_grid, save_to)
+    }
 }
 
-show_new_pool_distributions <- function(complete_new_pool) {
-    # Steps:
-    #   - fetch the points that were selected from new_pool during each run
-    #   - add corresponding variables
-    #   - filter to select the target combination of parameters
-    selected_new_features <- fetch_all_new_samples_id()
-    # add features
-    selected_new_features <- selected_new_features |>
+show_new_pool_distributions <- function(
+        complete_new_pool, variable,
+        strat_var = "strategies", strat_order = NULL,
+        size_var  = "new_samples_size", size_order = NULL,
+        fold_var  = "k_folds",
+        random_strategy = "random-sampling",
+        aggregate = c("fold_mean", "pool"),
+        summary_fun = mean,
+        max_ref_n = 5000, seed = 1,
+        save_to = NULL) {
+
+    var_levels <- variable   # keep the argument safe from column masking
+    aggregate <- match.arg(aggregate)
+    set.seed(seed)
+
+    # 1. Selected points + features
+    new_points_df <- fetch_all_new_samples_id() |>
         left_join(
-            as.data.frame(complete_new_pool)[c(X_VARIABLES, "row_id")], 
-            by = c("sample_id" = "row_id"))
-    # filter to target combination of parameters
-    selected <- selected_new_features |>
-        filter(
-            r_effect == R_EFFECT_PLOT,
-            new_samples_size == NEW_SAMPLE_SIZE_MAP,
-            strategies == STRATEGY_MAP
+            as.data.frame(complete_new_pool)[c(variable, "row_id")],
+            by = c("sample_id" = "row_id")) |>
+        pivot_longer(all_of(variable), names_to = "variable", values_to = "value") |>
+        filter(!is.na(value))
+
+    # 2. Aggregation over folds
+    if (aggregate == "fold_mean") {
+        new_points_df <- new_points_df |>
+            group_by(across(all_of(c(fold_var, size_var, strat_var, "variable")))) |>
+            summarise(value = summary_fun(value, na.rm = TRUE), .groups = "drop")
+    }
+
+    # 3. References: France + pool of candidates (subsampled)
+    france_df <- clip_raster_to_france_shape(rast(FEATURES_RES_TRF), buffer = 0) |>
+        as.data.frame() |> fix_names()
+    to_long <- function(df, label) {
+        df[variable] |>
+            pivot_longer(everything(), names_to = "variable", values_to = "value") |>
+            filter(!is.na(value)) |>
+            mutate(ref = label)
+    }
+    ref_long <- bind_rows(
+        to_long(france_df, "France"),
+        to_long(as.data.frame(complete_new_pool), "New points (500 ENI)"))
+
+    # 4. Factor levels and colours
+    lvls <- .strategy_levels(new_points_df[[strat_var]], strat_order, random_strategy)
+    colors <- .strategy_colours(lvls, random_strategy, random_colour = "grey50")
+    ref_lvls <- c("France", "New points (500 ENI)")
+    ref_cols <- c("France" = "grey15", "New points (500 ENI)" = "grey85")
+    all_lvls <- c(ref_lvls, lvls)
+    all_cols <- c(ref_cols, colors)
+
+    new_points_df <- new_points_df |>
+        .set_factor(strat_var, all_lvls) |>
+        .set_factor(size_var, size_order) |>
+        mutate(variable = factor(variable, levels = var_levels),
+               is_ref = FALSE)
+    size_levels <- levels(new_points_df[[size_var]])
+
+    # 5. References as extra "strategies", repeated in every size column
+    ref_rows <- ref_long |>
+        group_by(variable, ref) |>
+        filter(row_number() %in% sample.int(n(), min(max_ref_n, n()))) |>
+        ungroup() |>
+        rename(!!strat_var := ref) |>
+        tidyr::crossing(!!size_var := factor(size_levels, levels = size_levels)) |>
+        mutate(!!strat_var := factor(.data[[strat_var]], levels = all_lvls),
+               variable = factor(variable, levels = var_levels),
+               is_ref = TRUE)
+    plot_df <- bind_rows(new_points_df, ref_rows)
+
+    # 6. Plot: strategies on x, values on y
+    p <- ggplot(plot_df, aes(x = .data[[strat_var]], y = value,
+                             fill = .data[[strat_var]])) +
+        geom_violin(scale = "width", trim = TRUE, adjust = 0.5,
+                    colour = "grey30", alpha = 0.7, linewidth = 0.4)
+    
+    if (aggregate == "pool") {
+        p <- p + geom_boxplot(width = 0.05, outlier.shape = NA,
+                              show.legend = FALSE)
+    } else {
+        p <- p +
+            geom_jitter(data = \(d) filter(d, !is_ref),
+                        width = 0.12, height = 0, size = 0.8,
+                        alpha = 0.5, colour = "grey20",
+                        show.legend = FALSE) +
+            stat_summary(fun = summary_fun, geom = "point",
+                         shape = 23, size = 2.5, fill = "white", colour = "black",
+                         show.legend = FALSE)
+    }
+
+    p <- p +
+        facet_grid(rows = vars(variable), cols = vars(.data[[size_var]]),
+                   scales = "free_y") +   # y shared within a row; x identical everywhere
+        labs(title = NULL, x = NULL, y = NULL,
+             caption = if (aggregate == "pool")
+                 "Selected points pooled over k folds; references: all pixels / candidates" else
+                     "Strategies: one value per k fold; references: all pixels / candidates")
+
+    p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
+        scale_fill_manual(values = all_cols, breaks = all_lvls, name = NULL) +
+        scale_x_discrete(limits = all_lvls) +   # references first, then strategies
+        theme(legend.position = "bottom",
+              axis.text.x  = element_blank(),
+              axis.ticks.x = element_blank())
+
+    print(p)
+    if (!is.null(save_to)) {
+        standardised_ggplot_save(p, save_to)
+    }
+    invisible(list(data = plot_df, plot = p))
+}
+
+LEGACY_plot_ridgeline <- function(
+        dfs, labels, group_folds,
+        zero_inflated = NULL,       # names of the variables to transform
+        zero_transform = sqrt,      # function applied to those variables
+        zero_tol = 1e-5,
+        bandwidth_adjust = 1, clip_quantiles = c(0.01, 0.99)) {
+    library(ggridges)
+    library(dplyr)
+    library(tidyr)
+    library(ggplot2)
+    # 1. Security check
+    n <- length(dfs)
+    if (!all(c(length(labels), length(group_folds)) == n)) {
+        stop("`labels` and `group_folds` must have the same length as `dfs`.")
+    }
+
+    labels <- as.list(labels)
+    group_folds <- as.list(group_folds)
+
+
+    # 2. Transform list of dataframes into a list of df with a "source" column
+    prepare_source <- function(df, label, pool) {
+        if ("k_folds" %in% names(df)) {
+            long <- to_long(df) |> 
+                mutate(k = as.character(k_folds))
+            if (isTRUE(pool)) {
+                long$source <- label
+                lvls <- label
+            } else {
+                ks   <- as.character(sort(unique(as.numeric(long$k))))
+                lvls <- paste(label, ks)
+                long$source <- paste(label, long$k)
+            }
+        } else {
+            long <- to_long(df, label)
+            long$source <- label
+            lvls <- label
+        }
+
+        # Colours: filled in later
+        n_lv <- length(lvls)
+        cols <- rep(NA_character_, n_lv)
+
+        list(
+            data = dplyr::select(long, source, variable, value),
+            levels = lvls,
+            colors = setNames(cols, lvls)
+        )
+    }
+    prepared <- Map(prepare_source, dfs, labels, group_folds)
+
+    # 3. Combine dataframes together
+    all_levels <- unlist(
+        lapply(prepared, `[[`, "levels"), 
+        use.names = FALSE)
+    if (anyDuplicated(all_levels)) {
+        stop("Labels must be unique across `dfs`.")
+    }
+
+    all_dfs <- bind_rows(lapply(prepared, `[[`, "data")) |>
+        mutate(source = factor(source, levels = all_levels))
+
+    # 4. Transform zero-inflated variables (before rescaling)
+    if (!is.null(zero_inflated)) {
+        unknown <- setdiff(zero_inflated, unique(as.character(all_dfs$variable)))
+        if (length(unknown) > 0) {
+            warning("Unknown variables in `zero_inflated`: ",
+                    paste(unknown, collapse = ", "))
+        }
+
+        # 4a. Flag zeros (the reference level is shared by all sources)
+        all_dfs <- all_dfs |>
+            group_by(variable) |>
+            mutate(
+                is_zi    = as.character(variable) %in% zero_inflated,
+                zero_lvl = min(value, na.rm = TRUE),
+                is_zero  = is_zi & value <= zero_lvl + zero_tol
+            ) |>
+            ungroup()
+
+        # 4b. One label per variable, with the share of zeros per source
+        zero_labels <- all_dfs |>
+            filter(is_zi) |>
+            group_by(variable, source) |>
+            summarise(
+                pct_zero = mean(is_zero, na.rm = TRUE),
+                .groups  = "drop"
+            ) |>
+            group_by(variable) |>
+            summarise(
+                zero_label = paste0(
+                    source, " (", round(100 * pct_zero), "%)",
+                    collapse = ", "
+                ),
+                .groups = "drop"
+            )
+
+        # 4c. Drop the spike, transform the rest, attach the labels
+        all_dfs <- all_dfs |>
+            filter(!is_zero) |>
+            group_by(variable) |>
+            mutate(
+                value = if (first(is_zi)) zero_transform(value - zero_lvl) else value
+            ) |>
+            ungroup() |>
+            left_join(zero_labels, by = "variable") |>
+            mutate(
+                variable = ifelse(
+                    is_zi,
+                    paste0(variable, " *\nshare of zeros: ", zero_label),
+                    as.character(variable))
+            ) |>
+            dplyr::select(-is_zi, -zero_lvl, -is_zero, -zero_label)
+    }
+    
+    # 5. Rescale per variables
+    all_dfs <- all_dfs |>
+        group_by(variable) |>
+        mutate(
+            lo = quantile(value, clip_quantiles[1], na.rm = TRUE),
+            hi = quantile(value, clip_quantiles[2], na.rm = TRUE),
+            # fall back to the full range if the quantiles collapse
+            hi = ifelse(hi == lo, max(value, na.rm = TRUE), hi),
+            value_scaled = pmin(pmax((value - lo) / (hi - lo), 0), 1)) |>
+        ungroup() |>
+        mutate(variable = factor(variable, levels = rev(unique(variable))))
+
+    # 6. Make plot
+    p <- ggplot(
+            all_dfs, 
+            aes(x = value_scaled, 
+                y = variable, 
+                fill = source, 
+                colour = source)
+            ) +
+        geom_density_ridges(
+            stat   = "density",
+            aes(height = after_stat(scaled)),
+            alpha = 0.35,
+            scale = 0.9,
+            adjust = bandwidth_adjust,
+            trim = FALSE) +
+        scale_x_continuous(
+            expand = c(0, 0), 
+            breaks = c(0, 1),
+            labels = c("low", "high")) +
+        labs(
+            x = "Value (rescaled per variable)", y = NULL,
+            caption = if (!is.null(zero_inflated)) {
+                "*: zeros excluded from the distribution (in brackets: number of points kept brackets)."
+            } else {
+                NULL
+            }
         )
 
-    # Make plot
-    plot_distribs <- plot_with_references(
-        df  = selected,
-        ref_left  = fix_names(as.data.frame(rast(FEATURES_RES_TRF)))[X_VARIABLES],
-        ref_right = as.data.frame(complete_new_pool)[X_VARIABLES],
-        left_label  = "France",
-        right_label = "500 ENI"
-    )
-    plot_distribs <- my_custom_ggplot_theme(plot_distribs, with_palette = FALSE)  +
-        theme(
-            aspect.ratio = 0.5,
-            legend.position = "none",
-            axis.text.x = element_text(angle = 45, hjust = 1)
-        )
-    print(plot_distribs)
-    standardised_ggplot_save(
-        plot_distribs,
-        file.path(ANALYSES_PATH, "distributions_in_selected_locations.pdf"),
-        .width = 36, 
-        .height = 12
-    )
+    my_custom_ggplot_theme(p, with_palette = TRUE) +
+        guides(
+            fill = guide_legend(title = "Data source:"),
+            colour = guide_legend(title = "Data source:"))
 }
 
 
@@ -372,32 +598,95 @@ improvement_df <- count_improving(
     threshold = 0.01,
     group_vars = c("STRATEGIES", "NEW_SAMPLE_SIZES"),
     panel_var = "subset")
-improvement_df["name"] <- "# of species with\nincrease in ΔMSE >1%"
+improvement_df["name"] <- "# of species with increase in ΔMSE >1%"
 improvement_df <- improvement_df |> rename(diff_score = n_sp_above)
 
 
 ##### Check criteria approximations ##### -------------------------------------
 ds_corr_plot <- corr_metrics(
-    scores = compare_df,
+    scores = compare_df, 
     x_metric = "Ds criterion (expected)",
     y_metric = "Ds criterion (realised)",
     title = "Expected vs realised Ds criterion",
-    subtitle = "The higher the criterion, the better the estimation of the actionable parameters",
+    strat_var = "STRATEGIES", 
     strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
     panel_order = c("train"),
+    lower_is_better = FALSE,
     save_to = file.path(ANALYSES_PATH, "ds-criterion_expected_vs_realised.pdf"))
 print(ds_corr_plot$plot)
 
+dsparam_corr_plot <- corr_metrics(
+    scores = compare_df, 
+    x_metric = "Ds criterion (expected)",
+    y_metric = "SD of actionable parameters",
+    title = "Expected Ds criterion VS SD of actionable parameters",
+    strat_var = "STRATEGIES", 
+    strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    panel_order = c("train"),
+    lower_is_better = FALSE,
+    save_to = NULL)
+dsparam_corr_plot$plot <- dsparam_corr_plot$plot + 
+    labs(subtitle = "(Ds: higher is better, SD: lower is better)")
+print(dsparam_corr_plot$plot)
+standardised_ggplot_save(
+    dsparam_corr_plot$plot, 
+    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD.pdf"))
+
+dsallparam_corr_plot <- corr_metrics(
+    scores = compare_df, 
+    x_metric = "Ds criterion (expected)",
+    y_metric = "SD of parameters (all)",
+    title = "Expected Ds criterion VS SD of all parameters",
+    strat_var = "STRATEGIES", 
+    strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    panel_order = c("train"),
+    lower_is_better = FALSE,
+    save_to = NULL)
+dsallparam_corr_plot$plot <- dsallparam_corr_plot$plot + 
+    labs(subtitle = "(Ds: higher is better, SD: lower is better)")
+print(dsallparam_corr_plot$plot)
+standardised_ggplot_save(
+    dsallparam_corr_plot$plot, 
+    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD.pdf"))
+
 i_corr_plot <- corr_metrics(
-    scores = compare_df,
+    scores = compare_df, 
     x_metric = "I criterion (expected)",
     y_metric = "I criterion (realised)",
     title = "Expected vs realised I criterion",
-    subtitle = "The lower the criterion, the better the predictions.",
+    strat_var = "STRATEGIES", 
     strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    lower_is_better = TRUE,
     panel_order = c("test_local", "test_stoc"),
     save_to = file.path(ANALYSES_PATH, "i-criterion_expected_vs_realised.pdf"))
 print(i_corr_plot$plot)
+
+ipred_corr_plot <- corr_metrics(
+    scores = compare_df, 
+    x_metric = "I criterion (expected)",
+    y_metric = "SD of predictions",
+    title = "Expected I criterion vs SD of predictions",
+    strat_var = "STRATEGIES", 
+    strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    lower_is_better = TRUE,
+    panel_order = c("test_local", "test_stoc"),
+    save_to = file.path(ANALYSES_PATH, "i-criterion_expected_vs_predictions.pdf"))
+print(ipred_corr_plot$plot)
 
 
 ##### Check strategy effect on estimations/predictions ##### ------------------
@@ -417,9 +706,15 @@ for (m in names(dist_metrics)) {
         scores = compare_df,
         ref_scores = ref_df,
         metric = m,
+        title = NULL, 
+        strat_var = "STRATEGIES", 
         strat_order = ORDER_STRATS,
+        size_var = "NEW_SAMPLE_SIZES", 
+        size_order = NULL,
+        panel_var = "subset", 
         panel_order = subsets_plot,
         lower_is_better = TRUE,
+        ref_label = "Reference model",
         save_to = file.path(
             ANALYSES_PATH, paste0("violinplots_", dist_metrics[[m]])))
     print(strat_violin_plot$plot)
@@ -432,36 +727,53 @@ violin_mse <- compare_plot(
     compare_scores = compare_df,
     metric = "MSE",
     x_var = "NEW_SAMPLE_SIZES",
-    x_order = EFFECTS[[2]]$NEW_SAMPLE_SIZES,
-    fill_var = "STRATEGIES",
-    fill_order = EFFECTS[[2]]$STRATEGIES,
-    color_order = ORDER_STRATS,            
+    x_order = NULL,
+    strat_var = "STRATEGIES",
+    strat_order = ORDER_STRATS,
     panel_var = "subset",
     panel_order = SUBSETS_PLOT,
-    size_var = "NEW_SAMPLE_SIZES",
     group_species = TRUE,
+    lower_is_better = TRUE,
     save_to = file.path(ANALYSES_PATH, "boxplot_MSE.pdf"))
 print(violin_mse$plot)
 
 violin_D_mse <- compare_plot(
-        diffs_scores = improvement_df,
-        metric = unique(improvement_df["name"])[[1]],
-        x_var = "NEW_SAMPLE_SIZES",
-        fill_var = "STRATEGIES",
-        fill_order = EFFECTS[[2]]$STRATEGIES,
-        color_order = ORDER_STRATS, 
-        panel_var = "subset",
-        panel_order = SUBSETS_PLOT,
-        save_to = file.path(ANALYSES_PATH, "MSE_delta_n_sp.pdf")
-)
+    diffs_scores = improvement_df,
+    metric = unique(improvement_df["name"])[[1]],
+    x_var = "NEW_SAMPLE_SIZES", 
+    x_order = NULL,
+    strat_var = "STRATEGIES",
+    strat_order = ORDER_STRATS,
+    panel_var = "subset", 
+    panel_order = SUBSETS_PLOT,
+    random_strategy = "random-sampling",
+    group_species = TRUE,
+    show_folds = TRUE,
+    summary_fun = mean,
+    lower_is_better = FALSE,
+    save_to = file.path(ANALYSES_PATH, "MSE_delta_n_sp.pdf"))
 print(violin_D_mse$plot)
-
 
 
 ##### MAPS ###### -------------------------------------------------------------
 ### Map frequency of sampled locations in new_pool
 all_datasets <- unwrap_simulations(
     readRDS(file = file.path(RESULTS_PATH, "datasets.rds")))
-show_map_selected_new_pool(complete_new_pool = all_datasets[[1]]$new_pool)
+show_map_selected_new_pool(
+    complete_new_pool = all_datasets[[1]]$new_pool,
+    save_to = file.path(ANALYSES_PATH, "freq-new-locations.pdf"))
+
+
+#### VAR DISTRIBUTIONS ##### --------------------------------------------------
+show_new_pool_distributions(
+        complete_new_pool = all_datasets[[1]]$new_pool, 
+        variable = c("light.pollution", "swf"),
+        strat_var = "strategies", 
+        strat_order = ORDER_STRATS,
+        size_var = "new_samples_size", 
+        size_order = NULL,
+        aggregate   = "pool",
+        random_strategy = "random-sampling",
+        save_to = file.path(ANALYSES_PATH, "distributions_grid.pdf")) 
 
 cli_alert_success("Analysis of HMSC is complete!\n\n")

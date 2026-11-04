@@ -40,6 +40,7 @@ csl: style/vancouver.csl
 theme:
   light: style/brite-mnhn.scss # cosmo is also a good default
 
+engine: knitr
 execute:
   fig-format: png
   fig-dpi: 300
@@ -79,6 +80,20 @@ The "BIODICAPT network" is a network of approximately 125 agricultural lands tha
 
 Consequently, these fields are quite clustered around the laboratories that already periodically collect data in them. 
 
+```{bash}
+#| echo: false
+f=../outputs/maps/biodicapt_sampling_locations_.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/biodicapt_sampling_locations_
+```
+
 ![Positions (approximative, for confidentiality) of the fields sampled in the BIODICAPT project. *Each field belong to a zone, which is the name of the laboratory handling data collection for this zone.*](images/biodicapt_sampling_locations_.png){#fig-biodicapt width=75%}
 
 For the BIODICAPT project, additionnal data needs to be collected in order to better represent the varying agricultural contexts in France metropolitan area. In order to do this, the project aims at collecting data on a larger scale using the 500 ENI network.
@@ -87,6 +102,20 @@ For the BIODICAPT project, additionnal data needs to be collected in order to be
 The "500 ENI network" is a long-term survey that was initiated by the French Ministry of Agriculture in 2012. Its aim is to monitor any changes of wild flora and wild fauna in agricultural landscapes, that could be associated with Non-Intended Effects (ENI) of agricultural practices, mainly the use of fertilisation and pesticides products.
 
 It consists of approximately 500 fields distributed over all agricultural regions of mainland France (including Corsica), sampled yearly by voluntary observers. These field were originally chosen to be representative of the main crop productions of France's metropolitan area.
+
+```{bash}
+#| echo: false
+f=../outputs/maps/eni500_sampling_locations_.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/eni500_sampling_locations_
+```
 
 ![Positions (approximative, for confidentiality) of the fields sampled in the 500 ENI network.](images/eni500_sampling_locations_.png){#fig-eni500 width=75%}
 
@@ -133,18 +162,72 @@ Resolution ($res$) was chosen to be equal to 5 km, which is a good middle ground
 
 **A few examples of the collected environmental rasters:**
 
+
 ::: {.panel-tabset}
 #### Temperatures
-![Average surface temperature over France in 2018 (in Kelvins, source: CHELSA-monthly). *Hexagonal cells, for representation purposes only.*](images/chelsa_tas_hexagons.png){#fig-chelsa_tas width=80%}
+```{bash}
+#| echo: false
+f=../outputs/maps/chelsa_tas.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/chelsa_tas
+```
+![Average surface temperature over France in 2018 (in Kelvins, source: CHELSA-monthly).](./images/chelsa_tas.png){#fig-chelsa_tas width=80%}
 
 #### Land Cover
-![CORINE Land Cover over France in 2018 (simplified categories, source: Copernicus). *Hexagonal cells, for representation purposes only.*](images/corine_hexagons.png){#fig-CLC width=100%}
+```{bash}
+#| echo: false
+f=../outputs/maps/corine.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*25/100 )) -y $(( H*0/100 )) \
+  -W $(( W*50/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/corine
+```
+
+![CORINE Land Cover over France in 2018 (simplified categories, source: Copernicus).](images/corine.png){#fig-CLC width=100%}
 
 #### NDVI
-![NDVI estimates over France for 2018 (source: NASA-Earthdata). *Hexagonal cells, for representation purposes only.*](images/NDVI_hexagons.png){#fig-ndvi0 width=80%}
+```{bash}
+#| echo: false
+f=../outputs/maps/ndvi.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/ndvi
+```
+![NDVI estimates over France for 2018 (source: NASA-Earthdata).](images/ndvi.png){#fig-ndvi0 width=80%}
 
 #### Light pollution
-![Light pollution over France in 2018 (Digital Number (unitless in 0-63), source: Dryad). *Hexagonal cells, for representation purposes only.*](images/light_pollution_hexagons.png){#fig-light-poll width=80%}
+```{bash}
+#| echo: false
+f=../outputs/maps/light_pollution.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/light_pollution
+```
+![Light pollution over France in 2018 (Digital Number (unitless in 0-63), source: Dryad).](images/light_pollution.png){#fig-light-poll width=80%}
 :::
 
 ### Simulation of species distributions
@@ -154,7 +237,21 @@ This package takes a multi-layered raster as input (containing all environmental
 
 In order to approximate real species relative abundance, a sample of the STOC dataset [@valle_data_2026] was used as reference. It contains the real observations of 40 bird species over more than 7000 locations in France, in varying contexts. The presence rate of each species was used as a prevalence rate in the simulations.
 
-![Rank-occurence curve of species in the STOC dataset, compared to several runs (k=10) of simulated species (n=40).](images/sim_rank-occurence_stoc.png){#fig-roc_stoc width=80%}
+
+```{bash}
+#| echo: false
+f=../outputs/simulations/sim_rank-occurence_stoc.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/sim_rank-occurence_stoc
+```
+![Rank-occurence curve of species in the STOC dataset, compared to several runs (k=10) of simulated species (n=40).](images/sim_rank-occurence_stoc.png){#fig-roc_stoc width=100%}
 
 ## Model
 To model the distribution of our simulated species over France's metropolitan area, we use a specific type of Species Distribution Models (SDM): a Joint Species Distribution Models (JSDM). These models make use of several species distributions to find *latent* links between them, which supposedly improves the prediction accuracy[^2].
@@ -263,7 +360,7 @@ $$
 With $\Phi$ the standard normal cumulative distribution function (cdf).
 
 
-### Fisher Information
+### Fisher Information {#sec-fisher-approx}
 The Fisher information matrix $M$ measures how much a design $X$ tells us about the parameters. For common GLMs, $M$ is known in closed form [@atkinson_elemental_2014]. $M$ is necessary to compute OED criteria.
 
 Unfortunately, it is not easily obtainable for HMSC, which is a complex non-linear (binary outcome) bayesian model with random effects. 
@@ -584,7 +681,7 @@ With $a = [M^{-1}r]_{1:s}$ and $q = \sigma_c^2 + r^\top M^{-1} r$, substituting 
 :::
 
 
-### Application
+### Application {#sec-application-ds}
 
 To compute $\Delta\Psi_{D_s}$ we need:
 
@@ -604,7 +701,7 @@ To compute $\Delta\Psi_{D_s}$ we need:
 
 Everything is computed per species $j$, $\Delta\Psi_{D_s}$ is then summed over $j$.
 
-### Evaluation of design
+### Evaluation of design {#sec-evaluation-ds}
 
 Once a model has been refitted on BIODICAPT plus the new sites using greedy Ds-optimality, a realised analogue of the criterion is available from the MCMC draws:
 
@@ -734,7 +831,7 @@ $$\boxed{\;\Delta\Psi_I \;=\; \frac{b_r^\top B\, b_r}{q}\;}, \qquad \text{with }
 - This criterion targets the predicted probability at the conditional predictor (random effect set to 0), with a first-order delta-method variance. $\varphi(\mu_{gj})$ is evaluated at the plug-in $\hat\beta_j$, like the weights $w$.
 :::
 
-### Application
+### Application {#sec-application-i}
 
 For a candidate site $c$ and a species $j$, computing $\Delta\Psi_I$ needs:
 
@@ -753,7 +850,7 @@ All limits of the Ds application hold: plug-in $\hat\beta_j$, one site per unit,
 The criterion targets the predictions of the linear predictor (or of the probability by the delta method), not the predictions of community composition, which depend on the joint distribution across species.
 :::
 
-### Evaluation of design
+### Evaluation of design {#sec-evaluation-i}
 
 Once a model has been refitted on BIODICAPT plus the new sites using greedy I-optimality, the realised analogue of the criterion is available from the posterior covariance of $\beta_j$ in the same way as for Ds:
 
@@ -769,9 +866,87 @@ Same as for Ds, it is used to check that the designs rank as predicted, not to r
 
 # Results
 ## Approximations
-Approximate criteria are compared to their realised values to confirm the approximation holds.
+To compute the Fisher Information Matrix (FIM), and thus our criteria, we assumed that HMSC could be linearised after an initial fit, which we based on BIODICAPT's data collection (see [@sec-fisher-approx]).
+
+Once the model is re-trained on BIODICAPT + the sites chosen inside 500 ENI, we can compare its expected criteria ([@sec-application-ds] \& [@sec-application-i]) to its realised values ([@sec-evaluation-ds] \& [@sec-evaluation-i]), parameters and predictions. This enables us to conduct a high-level check to confirm that the approximation of the FIM produced the expected results.
+
+**Checking the approximations:**
+
+::: {.panel-tabset}
+### Ds-criterion
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/ds-criterion_expected_vs_realised.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/ds-criterion_expected_vs_realised
+```
+![Expected VS realised Ds-criterion. This criterion has to be maximised to best estimate actionable parameters.](./images/ds-criterion_expected_vs_realised.png){#fig-ds-criterion_expected_vs_realised width=80%}
+
+### Actionable parameters
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/ds-criterion_expected_vs_actionable_SD.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/ds-criterion_expected_vs_actionable_SD
+```
+![Expected Ds-criterion VS SD of actionable variables. We expect that the higher the Ds-criterion, the lower the SD of the actionable parameters.](./images/ds-criterion_expected_vs_actionable_SD.png){#fig-ds-criterion_expected_vs_actionable_SD width=80%}
+
+
+### I-criterion
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/i-criterion_expected_vs_realised.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*20/100 )) -y $(( H*0/100 )) \
+  -W $(( W*60/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/i-criterion_expected_vs_realised
+```
+![Expected VS realised I-criterion. This criterion has to be minimised to make better predictions.](./images/i-criterion_expected_vs_realised.png){#fig-i-criterion_expected_vs_realised width=80%}
+
+### Predictions
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/i-criterion_expected_vs_predictions.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*20/100 )) -y $(( H*0/100 )) \
+  -W $(( W*60/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/i-criterion_expected_vs_predictions
+```
+![Expected I-criterion VS SD of predictions. We expect that the lower the I-criterion, the lower the SD of the predictions.](./images/i-criterion_expected_vs_predictions.png){#fig-i-criterion_expected_vs_predictions width=80%}
+:::
+
 
 ## Sampling in 500 ENI
+::: {.callout-note collapse="false"}
+## To be continued...
+
+This report is still under construction, come back later! 
+:::
+
 
 ## Comparison with previous works
 

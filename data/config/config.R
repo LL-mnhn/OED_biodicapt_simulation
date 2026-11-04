@@ -8,6 +8,7 @@
 library(ggplot2)
 library(stringr)
 library(colorspace)
+library(viridisLite)
 
 
 ### Global variables ----------------------------------------------------------
@@ -305,6 +306,9 @@ GG_TERRAIN_PALETTE <- colorRampPalette(c(
     "#f7f4f9", "#f7f4f9", "#e8a0a0", "#e8935a", "#e8c93a", 
     "#8fc93a", "#2ca02c", "#22b0b0", "#22b0b0"))(10)
 
-CONTRASTED_PLASMA_COLOURS <- c(
+
+PLAMSA_CONTRASTED <- c(
     "#00008B", "#0000FF", "#A020F0", "#FF69B4", "#FFA500", 
     "#FFFF00")
+JET_CLASSIC <- turbo(256)
+CUSTOM_CMAP <- JET_CLASSIC

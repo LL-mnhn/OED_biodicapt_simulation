@@ -127,26 +127,27 @@ show_save_results <- function() {
         MAPS_PATH, "' ."))
     dir.create(MAPS_PATH, recursive = TRUE)
 
+    # 0. Load raster
+    master <- clip_raster_to_france_shape(rast(FEATURES_RAW_FULL), buffer = 0)
+
     # 1. Corine Land Cover Dataset
     # shapefile  
     corine_plot_bis <- ggplot_categorical_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        rast = clip_raster_to_france_shape(
-            rast(CORINE_PATH_PREPROCESSED), 
-            buffer = 0),
-        layer_name = "NEW_LABEL3")
+        rast = master,
+        layer_name = "clc")
     print(corine_plot_bis)
     standardised_ggplot_save(
         figure = corine_plot_bis, 
         save_path = file.path(MAPS_PATH, "corine.pdf"))   
     
     # 2. chelsa datasets
-    for (i in 1:length(CHELSA_DATASETS)) {
-        r <- rast(file.path(CHELSA_PATHS_PREPROCESSED[i]))
+    chelsa_loop <- paste0("chelsa.", CHELSA_DATASETS, ".annual")
+    for (i in 1:length(chelsa_loop)) {
         chelsa_plot_bis <- ggplot_quantitative_raster_on_background_map(
             background_map = ggplot_get_france_base_map("national"), 
-            raster = clip_raster_to_france_shape(r, buffer = 0),
-            layer_name = "mean",
+            raster = master,
+            layer_name = chelsa_loop[[i]],
             transform_scale = list(
                                     "identity", 
                                     "sqrt", 
@@ -163,12 +164,11 @@ show_save_results <- function() {
     }
 
     # 3. SWF
-    r <- rast(file.path(SWF_PATH_PREPROCESSED))
     swf_plot_bis <- ggplot_quantitative_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        raster = clip_raster_to_france_shape(r, buffer = 0),
-        transform_scale = "identity",
-        layer_name = "swf_2018_100m_03035_v1_0",
+        raster = master,
+        transform_scale = "sqrt",
+        layer_name = "swf",
         unit = "%",
         limits = NULL,
         precision_auto_limits = 0.1)
@@ -178,12 +178,11 @@ show_save_results <- function() {
         save_path = file.path(MAPS_PATH, "swf.pdf"))   
 
     # 4. NDVI
-    r <- rast(file.path(NDVI_PATH_PREPROCESSED))
     ndvi_plot_bis <- ggplot_quantitative_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        raster = clip_raster_to_france_shape(r*100, buffer = 0),
-        transform_scale = "identity",
-        layer_name = "mean",
+        raster = master*100,
+        transform_scale = mirrored_sqrt_trans(offset_high = 100),
+        layer_name = "ndvi.annual",
         unit = "%",
         limits = NULL,
         precision_auto_limits = 0.1)
@@ -193,12 +192,11 @@ show_save_results <- function() {
         save_path = file.path(MAPS_PATH, "ndvi.pdf"))   
 
     # 5. Elevation
-    r <- rast(file.path(ELEVATION_PATH_PREPROCESSED))
     elev_plot_bis <- ggplot_quantitative_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        raster = clip_raster_to_france_shape(r, buffer = 0),
+        raster = master,
         transform_scale = "sqrt",
-        layer_name = "fileef5d34834802",
+        layer_name = "elevation",
         unit = "m",
         limits = NULL,
         precision_auto_limits = 0.1)
@@ -208,12 +206,11 @@ show_save_results <- function() {
         save_path = file.path(MAPS_PATH, "elevation.pdf"))   
 
     # light_pollution
-    r <- rast(file.path(LIGHT_POLLUTION_PATH_PREPROCESSED))
     light_plot_bis <- ggplot_quantitative_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        raster = clip_raster_to_france_shape(r, buffer = 0),
-        transform_scale = "sqrt",
-        layer_name = "harmonized_dn_ntl_2018_simviirs",
+        raster = master,
+        transform_scale = "identity",
+        layer_name = "light.pollution",
         unit = "DN",
         limits = NULL,
         precision_auto_limits = 0.1)
@@ -223,12 +220,11 @@ show_save_results <- function() {
         save_path = file.path(MAPS_PATH, "light_pollution.pdf"))   
     
     # pesticides
-    r <- rast(file.path(PESTICIDE_PATH_PREPROCESSED))
     pest_plot_bis <- ggplot_quantitative_raster_on_background_map(
         background_map = ggplot_get_france_base_map("national"), 
-        raster = clip_raster_to_france_shape(r, buffer = 0),
+        raster = master,
         transform_scale = "sqrt",
-        layer_name = "mean_tii",
+        layer_name = "pesticides",
         unit = "eTII",
         limits = NULL,
         precision_auto_limits = 0.1)

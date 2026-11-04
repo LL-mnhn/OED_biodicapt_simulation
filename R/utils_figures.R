@@ -175,6 +175,7 @@ abbreviate_labels <- function(x) {
   })
 }
 
+
 ##### Maps functions ##### ----------------------------------------------------
 # A function that creates a simple background map of france in ggplot2
 # ARGS:
@@ -211,6 +212,36 @@ ggplot_get_france_base_map <- function(
             ylim = c(lat_min, lat_max))
     
     return(my_custom_ggplot_theme(base_map, with_palette=FALSE, is_map = TRUE))
+}
+
+# A custom helper for transform_scale parameters (transforms a linear color
+# scale into a mirrored log one, starting at offset_high).
+# ARGS:
+#   - offset_high: a numeric. The starting point of the log scale (reversed).
+# RETURNS:
+#   - a scales::new_transform() object.
+mirrored_log_trans <- function(offset_high) {
+  scales::new_transform(
+    name      = paste0("mirrored_log_", offset_high),
+    transform = function(x) -log(offset_high - x),
+    inverse   = function(x) offset_high - exp(-x),
+    domain    = c(-Inf, offset_high)  # strictly below offset_high
+  )
+}
+
+# A custom helper for transform_scale parameters (transforms a linear color
+# scale into a mirrored scale one, starting at offset_high).
+# ARGS:
+#   - offset_high: a numeric. The starting point of the log scale (reversed).
+# RETURNS:
+#   - a scales::new_transform() object.
+mirrored_sqrt_trans <- function(offset_high) {
+  scales::new_transform(
+    name      = paste0("mirrored_sqrt_", offset_high),
+    transform = function(x) -sqrt(offset_high - x),
+    inverse   = function(x) offset_high - ((-x)^2),
+    domain    = c(-Inf, offset_high)  # strictly below offset_high
+  )
 }
 
 # A function to create a ggplot that shows a categorical SpatRaster
@@ -448,7 +479,7 @@ ggplot_quantitative_raster_on_background_map <- function(
         unit = "°C",
         transform_scale = "sqrt",
         limits = NULL,
-        cols = CONTRASTED_PLASMA_COLOURS,
+        cols = CUSTOM_CMAP,
         precision_auto_limits = 1e-5,
         max_cells = 5e5) {
 
@@ -533,7 +564,7 @@ ggplot_quantitative_shapefile_on_background_map <- function(
         unit = "°C",
         transform_scale = "sqrt",
         limits = NULL,
-        cols = CONTRASTED_PLASMA_COLOURS,
+        cols = CUSTOM_CMAP,
         precision_auto_limits = 1e-5
     ) {
 
@@ -599,7 +630,7 @@ ggplot_quantitative_df_on_background_map <- function(
         unit = NULL,
         limits = NULL,
         precision_auto_limits = 1e-5,
-        cols = CONTRASTED_PLASMA_COLOURS,
+        cols = CUSTOM_CMAP,
         transform_scale = "sqrt",
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
@@ -702,7 +733,7 @@ ggplot_quantitative_df_on_background_map <- function(
 }
 
 
-##### HMSC interpretation ##### -----------------------------------------------
+##### HMSC training analysis ##### --------------------------------------------
 # A function that mimicks Hmsc::plotBeta
 # ARGS:
 #   - hM: a fitted Hmsc model object.
@@ -821,239 +852,10 @@ ggplot_custom_plotVariancePartitioning <- function(hM, VP) {
         theme(axis.text.x  = element_text(angle = 45, hjust = 1)))
 }
 
-# A function to compare scores between k_folds, subset and model type.
-# ARGS:
-#   - ref_scores: a data.frame or tibble. 
-#       Must contain columns: 
-#           name (with metrics' names), 
-#           score (with metrics' values),
-#           sp (a list of species' names),
-#           k (for each k_fold).
-#   - compare_scores: a data.frame or tibble.
-#       Must contain columns: 
-#           name (with metrics' names), 
-#           score (with metrics' values),
-#           sp (a list of species' names),
-#           k (for each k_fold),
-#           x_var (see details below),
-#           panel_var (see details below).
-#   - diffs_scores: a data.frame or tibble.
-#       Default is NULL (computed from ref_scores and compare_scores).
-#       When given, skips computation and uses it directly.
-#   - metric: a string. The name of a category in column "name".
-#   - x_var: a string. 
-#       The name of column in compare_scores, will be displayed on the x-axis.
-#   - x_order: a vector of string. Must contains all unique values in 
-#       compare_scores[[x_order]]. The order of the panels displayed.
-#   - panel_var: a string. 
-#       The name of column in compare_scores, will be displayed in different 
-#       panels on a 1-row grid of plots.
-#   - panel_order: a vector of string. Must contains all unique values in 
-#       compare_scores[[panel_order]]. The order of the panels displayed.
-#   - group_species: a boolean. When TRUE (default) averages scores over all
-#       species. When FALSE, computes each species average over k_folds and
-#       displays a grid of panels with species in column and panel_var in row.
-#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
-compare_plot <- function(
-        ref_scores = NULL, compare_scores = NULL, metric, diffs_scores = NULL,
-        x_var = NULL, x_order = NULL,
-        fill_var = NULL, fill_order = NULL,
-        color_order = NULL, random_strategy = "random-sampling",
-        panel_var = NULL, panel_order = NULL,
-        group_species = TRUE,
-        save_to = NULL) {
 
-    if (is.null(diffs_scores)) {
-        # species is kept as a key only when not averaging over it
-        sp_key    <- if (group_species) NULL else "sp"
-        join_keys <- c("k", panel_var, sp_key)
-
-        # 1. Reference: mean score per fold (and panel, and species if kept)
-        ref_summary <- ref_scores |>
-            filter(name == metric) |>
-            group_by(across(all_of(join_keys))) |>
-            summarise(ref_score = mean(score, na.rm = TRUE), .groups = "drop")
-
-        # 2. Compared scores: mean per fold, x, fill, panel (and species)
-        compare_summary <- compare_scores |>
-            filter(name == metric) |>
-            group_by(across(all_of(c(join_keys, x_var, fill_var)))) |>
-            summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop")
-
-        # 3. Per-fold difference with the matching reference
-        diffs_df <- compare_summary |>
-            left_join(ref_summary, by = join_keys) |>
-            mutate(diff_score = avg_score - ref_score)
-    } else {
-        diffs_df <- diffs_scores
-    }
-
-    # dummy x so the violin still has a discrete position
-    if (is.null(x_var)) {
-        diffs_df$.x <- factor("all")
-        x_col <- ".x"
-    } else {
-        diffs_df[[x_var]] <- if (is.null(x_order)) {
-            factor(diffs_df[[x_var]])
-        } else {
-            factor(diffs_df[[x_var]], levels = x_order)
-        }
-        x_col <- x_var
-    }
-
-    if (!is.null(panel_var) && !is.null(panel_order)) {
-        diffs_df <- diffs_df |> filter(.data[[panel_var]] %in% panel_order)
-    }
-
-    # dummy fill so the violin still has a single group to colour
-    if (is.null(fill_var)) {
-        diffs_df$.fill <- factor("all")
-        fill_col <- ".fill"
-    } else {
-        diffs_df[[fill_var]] <- if (is.null(fill_order)) {
-            factor(diffs_df[[fill_var]])
-        } else {
-            factor(diffs_df[[fill_var]], levels = fill_order)
-        }
-        fill_col <- fill_var
-    }
-
-    # ordered panel
-    if (!is.null(panel_var)) {
-        diffs_df[[panel_var]] <- if (is.null(panel_order)) {
-            factor(diffs_df[[panel_var]])
-        } else {
-            factor(diffs_df[[panel_var]], levels = panel_order)
-        }
-    }
-
-    # 4. Caption, with reference means per panel
-    if (is.null(diffs_scores)) {
-        ref_means <- ref_summary |>
-            group_by(across(all_of(panel_var))) |>
-            summarise(m = mean(ref_score, na.rm = TRUE), .groups = "drop")
-
-        if (!is.null(panel_var)) {
-            if (!is.null(panel_order)) {
-                ref_means <- ref_means |>
-                    mutate(across(all_of(panel_var), ~ factor(.x, levels = panel_order))) |>
-                    arrange(across(all_of(panel_var)))
-            }
-            ref_text  <- paste0(ref_means[[panel_var]], ": ", round(ref_means$m, 3),
-                                collapse = ", ")
-            ref_label <- paste0(" (", panel_var, ")")
-        } else {
-            ref_text  <- as.character(round(ref_means$m, 3))
-            ref_label <- ""
-        }
-    }
-
-    if (group_species) {
-        bottom_caption <- "Distribution of per-fold differences (species-averaged within each fold, across k_fold)."
-    } else {
-        bottom_caption <- "Distribution of per-fold differences across k_fold, per species."
-    }
-    if (is.null(diffs_scores)) {
-        bottom_caption <- paste0(
-            bottom_caption,
-            "\nReference mean ", metric, ref_label, ": ", ref_text, "."
-        )
-        y_label <- "Delta in average "
-    } else {
-        y_label <- ""
-    }
-
-    # one summary value per violin: x value x fill value (x facet cells)
-    summary_keys <- unique(c(x_col, fill_col, panel_var,
-                             if (!group_species) "sp"))
-    violin_summary <- diffs_df |>
-        group_by(across(all_of(summary_keys))) |>
-        summarise(m = mean(diff_score, na.rm = TRUE), .groups = "drop")
-
-    # 5. Colours: tied to values (via color_order), not to plotting position
-    lvls_now   <- levels(diffs_df[[fill_col]])
-    color_lvls <- if (is.null(color_order)) {
-        sort(lvls_now)
-    } else {
-        c(intersect(color_order, lvls_now), setdiff(lvls_now, color_order))
-    }
-
-    if (!is.null(random_strategy) && random_strategy %in% color_lvls) {
-        # grey for the random strategy, palette for the others (as in distribution_plot)
-        rest        <- setdiff(color_lvls, random_strategy)
-        fill_colors <- c(setNames("grey70", random_strategy),
-                         setNames(rep_len(PALETTE, length(rest)), rest))
-    } else {
-        fill_colors <- setNames(rep_len(PALETTE, length(color_lvls)), color_lvls)
-    }
-
-    fill_title <- if (is.null(fill_var)) {
-        NULL
-    } else {
-        fill_var |> str_replace_all("_", " ") |> str_to_sentence()
-    }
-
-    # 6. Plot
-    dodge <- position_dodge(width = 0.75)
-
-    p <- ggplot(
-            diffs_df,
-            aes(y = diff_score, x = .data[[x_col]], fill = .data[[fill_col]])) +
-        geom_violin(position = dodge, width = 0.6,
-                    scale = "width", trim = TRUE,
-                    colour = "grey30", alpha = 0.7, linewidth = 0.4) +
-        geom_point(position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.75),
-                   size = 0.8, alpha = 0.5, colour = "grey20", show.legend = FALSE) +
-        geom_point(data = violin_summary,
-                   aes(x = .data[[x_col]], y = m, group = .data[[fill_col]]),
-                   inherit.aes = FALSE, position = dodge,
-                   shape = 23, size = 2.5, fill = "white", colour = "black") +
-        labs(caption = bottom_caption, fill = fill_title) +
-        ylab(paste0(y_label, metric)) +
-        xlab(if (is.null(x_var)) {
-                NULL
-            } else {
-                x_var |> str_replace_all("_", " ") |> str_to_sentence()
-            }
-        ) +
-        geom_hline(yintercept = 0, linetype = "dashed")
-
-    # faceting
-    if (group_species) {
-        if (!is.null(panel_var)) {
-            p <- p + facet_wrap(vars(.data[[panel_var]]), nrow = 1)
-        }
-    } else {
-        p <- p + if (!is.null(panel_var)) {
-            facet_grid(rows = vars(.data[[panel_var]]), cols = vars(sp))
-        } else {
-            facet_grid(cols = vars(sp))
-        }
-    }
-
-    p <- my_custom_ggplot_theme(p) +
-        scale_fill_manual(values = fill_colors)
-
-    if (is.null(fill_var)) p <- p + guides(fill = "none")
-
-    if (is.null(x_var)) {
-        p <- p + theme(axis.text.x = element_blank(),
-                       axis.ticks.x = element_blank())
-    } else {
-        p <- p + scale_x_discrete(labels = abbreviate_labels)
-    }
-
-    # lower is better for MSE/RMSE, so flip the axis
-    if ((grepl("MSE", metric) || grepl("SD", metric)) && (!grepl("Δ", metric))) {
-        p <- p + scale_y_reverse()
-    }
-
-    # Save and return results
-    if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
-    list(diffs = diffs_df, plot = p)
-}
-
-# A function to compare scores between k_folds, subset and model type.
+##### HMSC result analysis ##### ----------------------------------------------
+# A function to compute number of improving species's scores between k_folds, 
+# subset and model type.
 # ARGS:
 #   - ref_scores: a data.frame or tibble. 
 #       Must contain columns in group_vars, in panel_var, sp and metric.
@@ -1067,6 +869,8 @@ compare_plot <- function(
 #       in ref_df.
 #   - panel_var: a vector of string. The name of columns whose values appear 
 #       in both tibbles/dataframes.
+# RETURNS:
+#   - A data.frame
 count_improving <- function(
         ref_scores, compare_scores, metric,
         diff_order = 1,
@@ -1118,107 +922,344 @@ count_improving <- function(
     #         n_k          = n(),
     #         .groups = "drop"
     #     )
-
+    return(improved_sp)
 }
 
-# A function to compare strategies against the distribution of random designs.
-# Mirrors the "metric_hist" figures of the optimality example: the histogram
-# shows the metric over random-sampling runs, vertical lines show the other
-# strategies, and (optionally) a dashed black line shows the reference model.
+# Computes spearman rank correlation. Returns c(rho, p-value), or c(NA, NA) 
+# when it cannot be computed (fewer than 3 points, constant vector).
 # ARGS:
-#   - scores: a data.frame or tibble (e.g. compare_df).
-#       Must contain columns: name, score, k, strat_var, size_var, panel_var.
-#   - metric: a string. The name of a category in column "name".
-#   - ref_scores: a data.frame or tibble (e.g. ref_df). Default NULL.
-#       When given, its mean (per panel_var) is drawn as a dashed black line.
-#   - random_strategy: a string. The value of strat_var forming the histogram.
-#   - strat_var: a string. Column holding the strategies.
-#   - strat_order: a vector of strings. Order of the strategies in the legend.
-#   - size_var: a string. Column giving the number of new samples (rows of the grid).
-#   - panel_var: a string. Column giving the subset (columns of the grid).
-#   - panel_order: a vector of strings. Order of the panels.
-#   - summary_fun: a function used to summarise a non-random strategy across
-#       folds into one line (default: mean).
-#   - lower_is_better: a boolean. Default NULL (FALSE for Ds, TRUE otherwise).
-#   - bins: number of histogram bins.
-#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
-distribution_plot <- function(
-        scores, metric, ref_scores = NULL,
-        random_strategy = "random-sampling",
+#   - x, y: two vectors of the same size
+safe_spearman <- function(x, y) {
+    if (length(x) < 3 || sd(x) == 0 || sd(y) == 0) {
+        return(c(rho = NA_real_, p = NA_real_))
+    }
+    ct <- suppressWarnings(cor.test(x, y, method = "spearman", exact = FALSE))
+    c(rho = unname(ct$estimate), p = ct$p.value)
+}
+
+### A series of helpers for 
+###     corr_metrics(), distribution_plot() and compare_plot().
+# A helper that creates a text based on lower_is_better and reversed booleans.
+.direction_note <- function(lower_is_better, reversed = FALSE) {
+    msg <- "("
+    if (lower_is_better) {
+        msg <- paste0(msg, "lower")
+    } else {
+        msg <- paste0(msg, "higher")
+    } 
+    msg <- paste0(msg, " is better")
+
+    if (reversed) {
+        msg <- paste0(msg, ", axis reversed")
+    }
+    msg <- paste0(msg, ")")
+    return(msg)
+}
+# A helper to organize strategies: 
+#   random strategy first, then strat_order, then anything that is left
+.strategy_levels <- function(x, strat_order, random_strategy) {
+    present <- unique(as.character(x))
+    others <- setdiff(present, random_strategy)
+    others <- if (is.null(strat_order)) {
+        sort(others)
+    } else {
+        c(intersect(strat_order, others), setdiff(others, strat_order))
+    }
+    c(intersect(random_strategy, present), others)
+}
+# A helper to organize colours tied ti strategies: 
+#   One colour per level, tied to the level (not to its position in a plot)
+.strategy_colours <- function(lvls, random_strategy, random_colour = "grey60") {
+    is_random <- lvls %in% random_strategy
+    cols <- character(length(lvls))
+    cols[is_random] <- random_colour
+    cols[!is_random] <- rep_len(PALETTE, sum(!is_random))
+    setNames(cols, lvls)
+}
+# A helper to select panels in a dataframe : 
+#   Keeps only the requested panels (no-op if panel_var / panel_order is NULL)
+.keep_panels <- function(df, panel_var, panel_order) {
+    if (is.null(df) || is.null(panel_var) || is.null(panel_order)) return(df)
+    df[df[[panel_var]] %in% panel_order, , drop = FALSE]
+}
+# A helper to turn a column into a factor (ordered if `order` is given)
+.set_factor <- function(df, var, order = NULL) {
+    if (is.null(df) || is.null(var) || !var %in% names(df)) return(df)
+    df[[var]] <- if (is.null(order)) {
+        factor(df[[var]])
+    } else {
+        factor(df[[var]], levels = order)
+    }
+    df
+}
+# A helper to have a common facet layout: 
+#   Rows get "var: value" labels, columns only the value.
+.facets <- function(rows = NULL, cols = NULL, scales = "free_x") {
+    if (length(rows) + length(cols) == 0) return(NULL)
+    facet_grid(
+        rows = vars(!!!rlang::syms(rows)),
+        cols = vars(!!!rlang::syms(cols)),
+        scales = scales,
+        labeller = labeller(.rows = label_both))
+}
+# A helper to replace "_" by spaces
+.pretty_label <- function(x) {
+    x |> 
+        str_replace_all("_", " ") |> 
+        str_to_sentence()
+}
+# A helper to explain violin plots
+.violin_caption <- function(unit, show_folds) {
+    msg <- paste0("Violins: distribution over folds (", unit, ").")
+
+    if  (show_folds) {
+        msg <- paste0(msg, " Points: individual folds.")
+    }
+    msg <- paste0(msg, ". Diamonds: summary.")
+    return(msg)
+}
+
+# Plots a pre-computed (Fisher approx) metric against a realised one. Each
+# diamond is one strategy, averaged over the k-folds. 
+# Plots also report the Spearman rank correlation per panel.
+# ARGS:
+#   - scores: a data.frame or tibble with columns name, score, k, strat_var,
+#       size_var, panel_var.
+#   - x_metric, y_metric: metric names (in column "name") for the x / y axes.
+#   - title: string (default title: "<y> vs <x>").
+#   - x_label, y_label: axis labels (default: the metric names).
+#   - strat_var / strat_order: strategy column and its legend order.
+#   - size_var / size_order: column with the number of new samples (facet rows).
+#   - panel_var / panel_order: subset column (facet columns), kept and ordered.
+#   - random_strategy: strategy drawn in grey (small points).
+#   - show_folds: draw each individual fold as a small transparent point.
+#   - save_to: filepath ending in ".pdf".
+# RETURNS: 
+#   a list containing:
+#       - data: mean and SE across folds, 
+#       - data_folds:one row per strategy and fold, 
+#       - stats: Spearman per panel,
+#       - plot: the resulting ggplot
+corr_metrics <- function(
+        scores, x_metric, y_metric,
+        title = NULL, x_label = NULL, y_label = NULL,
         strat_var = "STRATEGIES", strat_order = NULL,
-        size_var = "NEW_SAMPLE_SIZES",
+        size_var = "NEW_SAMPLE_SIZES", size_order = NULL,
         panel_var = "subset", panel_order = NULL,
+        random_strategy = "random-sampling",
+        show_folds = TRUE, lower_is_better = FALSE,
+        save_to = NULL) {
+
+    scores <- .keep_panels(scores, panel_var, panel_order)
+
+    # 1. One value per design and metric (aggregated over species)
+    keys <- unique(c("k", panel_var, size_var, strat_var))
+    per_design <- function(metric, new_name) {
+        scores |>
+            filter(name == metric) |>
+            group_by(across(all_of(keys))) |>
+            summarise(value = mean(score, na.rm = TRUE), .groups = "drop") |>
+            rename(!!new_name := value)
+    }
+    folds_df <- inner_join(
+        per_design(x_metric, "x"),
+        per_design(y_metric, "y"),
+        by = keys) |>
+        filter(is.finite(x), is.finite(y))
+
+    # Keep only folds where all strategies are present in the panel, so that
+    # every strategy is averaged over the same folds
+    folds_df <- folds_df |>
+        group_by(across(all_of(c(panel_var, size_var)))) |>
+        mutate(.n_strat = n_distinct(.data[[strat_var]])) |>
+        group_by(across(all_of(c("k", panel_var, size_var)))) |>
+        filter(n_distinct(.data[[strat_var]]) == first(.n_strat)) |>
+        ungroup() |>
+        select(-.n_strat)
+
+    if (nrow(folds_df) == 0) {
+        stop("No design has both '", x_metric, "' and '", y_metric, "'.")
+    }
+
+    # Mean over folds, with the standard error across folds
+    mean_df <- folds_df |>
+        group_by(across(all_of(setdiff(keys, "k")))) |>
+        summarise(
+            n_folds = n(),
+            x_se = sd(x) / sqrt(n()),
+            y_se = sd(y) / sqrt(n()),
+            x = mean(x),
+            y = mean(y),
+            .groups = "drop")
+
+    # 2. Strategies: grey for random sampling, palette for the others
+    lvls <- .strategy_levels(mean_df[[strat_var]], strat_order, random_strategy)
+    colors <- .strategy_colours(lvls, random_strategy)
+    point_sizes <- setNames(ifelse(lvls %in% random_strategy, 1.5, 3), lvls)
+
+    # 3. Spearman correlation per panel, computed on the individual folds
+    stats <- folds_df |>
+        group_by(across(all_of(c(panel_var, size_var)))) |>
+        summarise(
+            n_designs = n(),
+            .sp = list(safe_spearman(x, y)),
+            rho = .sp[[1]][["rho"]],
+            p = .sp[[1]][["p"]],
+            .groups = "drop") |>
+        select(-.sp) |>
+        mutate(label = sprintf(
+            "Spearman = %.2f (%s)", rho,
+            ifelse(is.na(p), "p = NA",
+                   ifelse(p < 0.01, "p < 0.01", sprintf("p = %.2f", p)))))
+
+    # Same factor levels everywhere, so facets line up across the three tables
+    prep <- function(df) {
+        df |>
+            .set_factor(strat_var, lvls) |>
+            .set_factor(size_var, size_order) |>
+            .set_factor(panel_var, panel_order)
+    }
+    mean_df  <- prep(mean_df) |> arrange(.data[[strat_var]])
+    folds_df <- prep(folds_df) |> arrange(.data[[strat_var]])
+    stats    <- prep(stats)
+
+    # 4. Plot
+    # Should points for each individual k_fold should be shown?
+    caption <- paste0("Diamonds: mean over k-folds (bars: SE across folds).")
+    if (show_folds) {
+        fold_layer <- geom_point(
+            data = folds_df,
+            aes(colour = .data[[strat_var]]),
+            size = 0.8, alpha = 0.5, show.legend = FALSE)
+        caption <- paste0(caption, " Small points: individual folds.")
+    } else {
+        fold_layer <- NULL
+    }
+    caption <- paste0(caption, 
+        " Dotted line: y = x.",
+        "\nSpearman's rank correlation computed across individual folds ",
+        "(not the means).")
+
+    if (is.null(x_label)) {
+        x_lab <- x_metric 
+    } else {
+        x_lab <- x_label
+    } 
+    if (is.null(y_label)) {
+        y_lab <- y_metric 
+    } else {
+        y_lab <- y_label
+    } 
+
+    p <- ggplot(mean_df, aes(x = x, y = y)) +
+        geom_abline(
+            intercept = 0, slope = 1,
+            colour = "grey60", linetype = "dotted", linewidth = 0.6,
+            inherit.aes = FALSE) +
+        fold_layer +
+        geom_linerange(
+            aes(ymin = y - y_se, ymax = y + y_se, colour = .data[[strat_var]]),
+            alpha = 0.4) +
+        geom_linerange(
+            aes(xmin = x - x_se, xmax = x + x_se, colour = .data[[strat_var]]),
+            orientation = "y", alpha = 0.4) +
+        geom_point(
+            aes(fill = .data[[strat_var]], size = .data[[strat_var]]),
+            shape = 23, colour = "black", alpha = 0.9) +
+        # Spearman annotation in the top-left corner of each panel
+        geom_text(
+            data = stats, aes(label = label),
+            x = -Inf, y = Inf, hjust = -0.05, vjust = 1.4, size = 3,
+            inherit.aes = FALSE) +
+        .facets(rows = size_var, cols = panel_var, scales = "free") +
+        labs(
+            title = if (is.null(title)) paste(y_lab, "vs", x_lab) else title,
+            subtitle = .direction_note(lower_is_better),
+            x = x_lab, y = y_lab,
+            caption = caption)
+
+    p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
+        scale_colour_manual(values = colors, guide = "none") +
+        scale_fill_manual(values = colors, name = "Strategy") +
+        scale_size_manual(values = point_sizes, name = "Strategy")
+
+    if (!is.null(save_to)) {
+        standardised_ggplot_save(p, save_to)
+    }
+    list(data = mean_df, data_folds = folds_df, stats = stats, plot = p)
+}
+
+# Distribution over k-folds of a (species-averaged) metric, one violin per
+# strategy, with an optional reference-model line.
+# ARGS:
+#   - scores: data.frame with columns name, score, k, strat_var, size_var,
+#       panel_var.
+#   - metric: metric name (in column "name").
+#   - ref_scores: optional data.frame (name, score, k, panel_var) of the
+#       reference model, drawn as a dashed vertical line per panel.
+#   - title: string (default: the metric).
+#   - strat_var / strat_order, size_var / size_order, panel_var / panel_order,
+#       random_strategy, show_folds, save_to: as in corr_metrics().
+#   - summary_fun: summary drawn as a diamond (and used for the reference line).
+#   - lower_is_better: TRUE/FALSE, or NULL to guess from the metric name.
+#   - ref_label: legend label of the reference line.
+# RETURNS:  
+#   a list containing:
+#       - data: list(folds, reference), 
+#       - plot: the resulting ggplot
+distribution_plot <- function(
+        scores, metric, ref_scores = NULL, title = NULL,
+        strat_var = "STRATEGIES", strat_order = NULL,
+        size_var = "NEW_SAMPLE_SIZES", size_order = NULL,
+        panel_var = "subset", panel_order = NULL,
+        random_strategy = "random-sampling",
+        show_folds = TRUE,
         summary_fun = mean,
         lower_is_better = FALSE,
-        show_points = TRUE,
         ref_label = "Reference model",
         save_to = NULL) {
 
     # 1. Species-averaged score for each fold, strategy, size and panel
     keys <- c(panel_var, size_var, strat_var)
     fold_df <- scores |>
+        .keep_panels(panel_var, panel_order) |>
         filter(name == metric) |>
         group_by(across(all_of(c("k", keys)))) |>
         summarise(score = mean(score, na.rm = TRUE), .groups = "drop")
-
-    if (!is.null(panel_order)) {
-        fold_df <- fold_df |> filter(.data[[panel_var]] %in% panel_order)
-    }
-
-    if (!any(fold_df[[strat_var]] == random_strategy)) {
-        stop("No rows for random_strategy '", random_strategy, "' in `scores`.")
-    }
 
     # 2. Reference line (one value per panel, repeated across sizes)
     ref_line <- NULL
     if (!is.null(ref_scores)) {
         ref_line <- ref_scores |>
+            .keep_panels(panel_var, panel_order) |>
             filter(name == metric) |>
             group_by(across(all_of(c("k", panel_var)))) |>
             summarise(score = mean(score, na.rm = TRUE), .groups = "drop") |>
             group_by(across(all_of(panel_var))) |>
-            summarise(score = summary_fun(score, na.rm = TRUE), .groups = "drop")
-        if (!is.null(panel_order)) {
-            ref_line <- ref_line |> filter(.data[[panel_var]] %in% panel_order)
-        }
+            summarise(score = summary_fun(score, na.rm = T), .groups = "drop")
     }
 
-    # 3. Factor ordering: random sampling first, then the other strategies
-    others <- setdiff(unique(fold_df[[strat_var]]), random_strategy)
-    other_lvls <- if (is.null(strat_order)) {
-        sort(others)
-    } else {
-        intersect(setdiff(strat_order, random_strategy), others)
-    }
-    lvls <- c(random_strategy, other_lvls)
-    fold_df <- fold_df |> filter(.data[[strat_var]] %in% lvls)
-    fold_df[[strat_var]] <- factor(fold_df[[strat_var]], levels = lvls)
+    # 3. Factor ordering and colours (shared with the other two plots)
+    lvls <- .strategy_levels(
+        fold_df[[strat_var]], strat_order, random_strategy)
+    colors <- .strategy_colours(
+        lvls, random_strategy, random_colour = "grey70")
 
-    set_panels <- function(df) {
-        if (is.null(df)) return(df)
-        df[[panel_var]] <- if (is.null(panel_order)) {
-            factor(df[[panel_var]])
-        } else {
-            factor(df[[panel_var]], levels = panel_order)
-        }
-        df
-    }
-    fold_df  <- set_panels(fold_df)
-    ref_line <- set_panels(ref_line)
+    fold_df <- fold_df |>
+        .set_factor(strat_var, lvls) |>
+        .set_factor(size_var, size_order) |>
+        .set_factor(panel_var, panel_order)
+    ref_line <- .set_factor(ref_line, panel_var, panel_order)
 
-    # Fill colours: grey for random sampling, palette for the others
-    fills <- c("grey70", PALETTE[seq_along(other_lvls)])
-    names(fills) <- lvls
-
-    # 4. Plot (built in the vertical orientation, then flipped)
+    # 4. Plot (horizontal violins: score on x, strategies on y)
     p <- ggplot(fold_df, aes(x = score, y = .data[[strat_var]],
-                            fill = .data[[strat_var]])) +
+                             fill = .data[[strat_var]])) +
         geom_violin(
             orientation = "y",
             scale = "width", trim = TRUE, colour = "grey30",
             alpha = 0.7, linewidth = 0.4)
 
-    if (show_points) {
+    if (show_folds) {
         p <- p + geom_jitter(
             width = 0, height = 0.12, size = 0.8,
             alpha = 0.5, colour = "grey20")
@@ -1240,24 +1281,17 @@ distribution_plot <- function(
     }
 
     p <- p +
-        facet_grid(
-            rows = vars(.data[[size_var]]),
-            cols = vars(.data[[panel_var]]),
-            scales = "free_x",   # x = score, shared within each column
-            labeller = labeller(.rows = label_both)) +
+        .facets(rows = size_var, cols = panel_var, scales = "free_x") +
         labs(
-            title = metric,
-            subtitle = paste0(
-                "(", if (lower_is_better) "lower" else "higher", " is better)"),
+            title = if (is.null(title)) metric else title,
+            subtitle = .direction_note(lower_is_better),
             x = paste0("Mean ", metric, " per fold"),
             y = NULL,
-            caption = paste0(
-                "Violins: distribution over folds ",
-                "(species-averaged, one value per k_fold); ",
-                "points: individual folds; diamonds: summary."))
+            caption = .violin_caption(
+                "species-averaged, one value per k_fold", show_folds))
 
-    p <- my_custom_ggplot_theme(p) +
-        scale_fill_manual(values = fills, guide = "none") +
+    p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
+        scale_fill_manual(values = colors, guide = "none") +
         # first strategy at the top: reverse the discrete limits
         scale_y_discrete(limits = rev(lvls)) +
         theme(
@@ -1273,227 +1307,189 @@ distribution_plot <- function(
             legend.margin = margin(2, 4, 2, 4))
 
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
-    list(data = list(folds = fold_df, reference = ref_line),
-         plot = p)
+    list(data = list(folds = fold_df, reference = ref_line), plot = p)
 }
 
-# Spearman rank correlation. Returns c(rho, p-value), or c(NA, NA) when it 
-# cannot be computed (fewer than 3 points, constant vector).
+# Distribution over k-folds of the difference between compared scores and a
+# reference model (vertical violins: difference on y, x_var on x, strat_var as
+# fill).
 # ARGS:
-#   - x, y: two vectors of the same size
-safe_spearman <- function(x, y) {
-    if (length(x) < 3 || sd(x) == 0 || sd(y) == 0) {
-        return(c(rho = NA_real_, p = NA_real_))
-    }
-    ct <- suppressWarnings(cor.test(x, y, method = "spearman", exact = FALSE))
-    c(rho = unname(ct$estimate), p = ct$p.value)
-}
-
-# A function that plots pre-computed (Fisher approx) against realised metrics.
-# Each point is one strategy, averaged over the k-folds. It reports the Spearman 
-# rank correlation between them: does the approximation rank the strategies 
-# like the retrained model does?
-# ARGS:
-#   - scores: a data.frame or tibble (e.g. compare_df).
-#       Must contain columns: name, score, k, strat_var, size_var, panel_var.
-#   - x_metric: a string. Name (in column "name") of the metric on the x-axis.
-#   - y_metric: a string. Name (in column "name") of the metric on the y-axis.
-#   - title, subtitle: strings. Plot title and subtitle.
-#   - x_label, y_label: strings. Axis labels (default: the metric names).
-#   - strat_var: a string. Column holding the strategies.
-#   - strat_order: a vector of strings. Order of the strategies in the legend.
-#   - size_var: a string. Column with the number of new samples.
-#   - panel_var: a string. Column with the subset.
-#   - panel_order: a vector of strings. Subsets to keep, and their order.
-#   - random_strategy: a string. Strategy drawn in grey (small points).
-#   - show_folds: a boolean. If TRUE, the value of each individual fold is 
-#       drawn as a small, transparent point behind the mean over folds.
-#   - save_to: a string. Filepath to save the plot to. Must end with ".pdf".
-# RETURNS:
-#   - a list: 
-#       - data: one row per strategy (mean and SE across folds), 
-#       - data_folds: one row per strategy and fold,
-#       - stats: Spearman per panel, 
-#       - plot.
-#   One panel per (panel_var, size_var) combination, so that designs of
-#   different sizes are never ranked against each other.
-corr_metrics <- function(
-        scores, x_metric, y_metric, title = NULL, subtitle = NULL,
-        x_label = NULL, y_label = NULL,
-        strat_var = "STRATEGIES", strat_order = NULL,
-        size_var = "NEW_SAMPLE_SIZES",
-        panel_var = "subset", panel_order = NULL,
+#   - ref_scores, compare_scores: data.frames (name, score, k, ...) used to
+#       compute the per-fold differences. Alternatively give `diffs_scores`,
+#       a table of pre-computed differences with a `diff_score` column.
+#   - metric: metric name (in column "name").
+#   - title: string (default: the metric).
+#   - x_var / x_order: column drawn on the x-axis (NULL = a single position).
+#   - strat_var / strat_order: column mapped to the fill (was fill_var /
+#       fill_order + color_order). NULL = a single colour.
+#   - size_var / size_order, panel_var / panel_order, random_strategy,
+#       show_folds, summary_fun, lower_is_better, save_to: as in
+#       distribution_plot().
+#   - group_species: TRUE = average over species inside each fold; FALSE =
+#       one column of facets per species.
+# RETURNS: 
+#   a list containing
+#       - data: per-fold differences, 
+#       - plot: the resulting ggplot
+compare_plot <- function(
+        ref_scores = NULL, compare_scores = NULL, diffs_scores = NULL,
+        metric,
+        title = NULL, x_var = NULL, x_order = NULL,
+        strat_var = NULL, strat_order = NULL,
+        size_var = NULL, size_order = NULL,
+        panel_var = NULL, panel_order = NULL,
         random_strategy = "random-sampling",
+        group_species = TRUE,
         show_folds = TRUE,
+        summary_fun = mean,
+        lower_is_better = NULL,
         save_to = NULL) {
 
-    # 1. One value per design and metric (aggregated over species)
-    keys <- unique(c("k", panel_var, size_var, strat_var))
-    per_design <- function(metric, new_name) {
-        scores |>
+    if (group_species) {
+        sp_key <- NULL 
+    } else {
+        sp_key <- "sp"
+    }
+
+    if (is.null(diffs_scores)) {
+        join_keys <- c("k", panel_var, sp_key)
+
+        # 1. Reference: mean score per fold (and panel, and species if kept)
+        ref_summary <- ref_scores |>
+            .keep_panels(panel_var, panel_order) |>
             filter(name == metric) |>
-            group_by(across(all_of(keys))) |>
-            summarise(value = mean(score, na.rm = TRUE), .groups = "drop") |>
-            rename(!!new_name := value)
-    }
-    designs <- inner_join(
-        per_design(x_metric, "x"),
-        per_design(y_metric, "y"),
-        by = keys) |>
-        filter(is.finite(x), is.finite(y))
+            group_by(across(all_of(join_keys))) |>
+            summarise(ref_score = mean(score, na.rm = TRUE), .groups = "drop")
 
-    # Keep only folds where all strategies are present in the panel, 
-    # so that every strategy is averaged over the same folds
-    designs <- designs |>
-        group_by(across(all_of(c(panel_var, size_var)))) |>
-        mutate(.n_strat = n_distinct(.data[[strat_var]])) |>
-        group_by(across(all_of(c("k", panel_var, size_var)))) |>
-        filter(n_distinct(.data[[strat_var]]) == first(.n_strat)) |>
-        ungroup() |>
-        select(-.n_strat)
+        # 2. Compared scores: mean per fold, x, strat, size, panel (and species)
+        compare_summary <- compare_scores |>
+            .keep_panels(panel_var, panel_order) |>
+            filter(name == metric) |>
+            group_by(across(all_of(unique(c(join_keys, size_var, x_var, strat_var))))) |>
+            summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop")
 
-    # Per-fold values, kept to draw the individual points
-    designs_folds <- designs
-
-    # Mean over folds, with the standard error across folds
-    designs <- designs |>
-        group_by(across(all_of(setdiff(keys, "k")))) |>
-        summarise(
-            n_folds = n(),
-            x_se = sd(x) / sqrt(n()),
-            y_se = sd(y) / sqrt(n()),
-            x = mean(x),
-            y = mean(y),
-            .groups = "drop")
-
-    # Stop if x_metric x y_metric does not exist
-    if (nrow(designs) == 0) {
-        stop("No design has both '", x_metric, "' and '", y_metric, "'.")
-    }
-
-    # Arange the designs per panel_order 
-    if (!is.null(panel_order)) {
-        designs <- designs |> filter(.data[[panel_var]] %in% panel_order)
-        designs_folds <- designs_folds |> 
-            filter(.data[[panel_var]] %in% panel_order)
-    }
-
-    # 2. Strategies: assign grey to random sampling, then get the others.
-    others <- setdiff(unique(designs[[strat_var]]), random_strategy)
-    other_lvls <- if (is.null(strat_order)) {
-        sort(others)
+        # 3. Per-fold difference with the matching reference
+        diffs_df <- compare_summary |>
+            left_join(ref_summary, by = join_keys) |>
+            mutate(diff_score = avg_score - ref_score)
     } else {
-        c(intersect(strat_order, others), setdiff(others, strat_order))
+        diffs_df <- .keep_panels(diffs_scores, panel_var, panel_order)
     }
-    lvls <- c(intersect(random_strategy, unique(designs[[strat_var]])), other_lvls)
-    designs[[strat_var]] <- factor(designs[[strat_var]], levels = lvls)
-    designs_folds[[strat_var]] <- factor(designs_folds[[strat_var]], levels = lvls)
-    designs <- designs |> arrange(.data[[strat_var]])
-    designs_folds <- designs_folds |> arrange(.data[[strat_var]])
 
-    is_random <- lvls == random_strategy
-    colors <- setNames(
-        c(rep("grey40", sum(is_random)), rep_len(PALETTE, length(other_lvls))),
-        lvls)
-    point_sizes <- setNames(ifelse(is_random, 1.5, 3), lvls)
-
-    # 3. Spearman correlation per panel (size_var x panel_var)
-    # computed on the means over folds
-    panel_stats <- designs_folds |>
-        group_by(across(all_of(c(panel_var, size_var)))) |>
-        summarise(
-            n_designs = n(),
-            rho = safe_spearman(x, y)[["rho"]],
-            p = safe_spearman(x, y)[["p"]],
-            .groups = "drop") |>
-        mutate(.panel = sprintf(
-            "%s: %s | %s: %s\nSpearman = %.2f (p = %.2f)",
-            panel_var, .data[[panel_var]], size_var, .data[[size_var]], rho, p))
-    if (!is.null(panel_order)) {
-        panel_stats <- panel_stats |>
-            mutate(across(all_of(panel_var), ~ factor(.x, levels = panel_order)))
-    }
-    panel_stats <- panel_stats |>
-        arrange(across(all_of(c(panel_var, size_var)))) |>
-        mutate(.panel = factor(.panel, levels = unique(.panel)))
-
-    # Attach the panel labels to both tables
-    panel_labels <- panel_stats |>
-        select(all_of(c(panel_var, size_var)), .panel) |>
-        mutate(across(all_of(panel_var), as.character))
-    designs <- left_join(designs, panel_labels, by = c(panel_var, size_var))
-    designs_folds <- left_join(
-        designs_folds, panel_labels, by = c(panel_var, size_var))
-
-    # 4. Plot
-    # Individual folds: small, transparent, drawn first (= underneath), 
-    # no legend entry. NULL (ignored by ggplot) when hidden.
-    if (show_folds) {
-        fold_layer <-  geom_point(
-            data = designs_folds,
-            aes(colour = .data[[strat_var]]),
-            size = 0.8, alpha = 0.5, show.legend = FALSE)
+    # dummy x / strat so the violins still have a discrete position and a fill
+    if (is.null(x_var)) {
+        diffs_df$.x <- factor("all")
+        x_col <- ".x"
     } else {
-        fold_layer <- NULL
+        diffs_df <- .set_factor(diffs_df, x_var, x_order)
+        x_col <- x_var
     }
+    if (is.null(strat_var)) {
+        diffs_df$.strat <- factor("all")
+        strat_col <- ".strat"
+    } else {
+        lvls_strat <- .strategy_levels(
+            diffs_df[[strat_var]], strat_order, random_strategy)
+        diffs_df <- .set_factor(diffs_df, strat_var, lvls_strat)
+        strat_col <- strat_var
+    }
+    diffs_df <- diffs_df |>
+        .set_factor(size_var, size_order) |>
+        .set_factor(panel_var, panel_order)
+
+    # 4. Caption, with reference means per panel
+    bottom_caption <- .violin_caption(
+        if (group_species) {
+            "species-averaged within each fold, one value per k_fold"
+        } else {
+            "one value per k_fold, per species"
+        },
+        show_folds)
+
+    y_label <- ""
+    if (is.null(diffs_scores)) {
+        ref_means <- ref_summary |>
+            group_by(across(all_of(panel_var))) |>
+            summarise(m = mean(ref_score, na.rm = TRUE), .groups = "drop")
+        if (!is.null(panel_var)) {
+            ref_means <- ref_means |>
+                .set_factor(panel_var, panel_order) |>
+                arrange(across(all_of(panel_var)))
+            ref_text <- paste0(
+                ref_means[[panel_var]], ": ", round(ref_means$m, 3),
+                collapse = ", ")
+            ref_suffix <- paste0(" (", panel_var, ")")
+        } else {
+            ref_text <- as.character(round(ref_means$m, 3))
+            ref_suffix <- ""
+        }
+        bottom_caption <- paste0(
+            bottom_caption,
+            "\nReference mean ", metric, ref_suffix, ": ", ref_text, ".")
+        y_label <- "Delta in average "
+    }
+
+    # one summary value per violin
+    summary_keys <- unique(c(x_col, strat_col, panel_var, size_var, sp_key))
+    violin_summary <- diffs_df |>
+        group_by(across(all_of(summary_keys))) |>
+        summarise(m = summary_fun(diff_score, na.rm = TRUE), .groups = "drop")
+
+    # 5. Colours: tied to values, grey for the random strategy
+    lvls_now <- levels(diffs_df[[strat_col]])
+    fill_colors <- .strategy_colours(lvls_now, random_strategy, random_colour = "grey70")
+
+    # 6. Plot
+    dodge <- position_dodge(width = 0.75)
+
+    p <- ggplot(
+            diffs_df,
+            aes(y = diff_score, x = .data[[x_col]], fill = .data[[strat_col]])) +
+        geom_violin(
+            position = dodge, width = 0.6,
+            scale = "width", trim = TRUE,
+            colour = "grey30", alpha = 0.7, linewidth = 0.4)
 
     if (show_folds) {
-        caption <- paste0(
-            "Large points: mean over k-folds (bars: SE across folds).",
-            "Small points: individual folds.",
-            "Dotted line: linear fit on the means. ",
-            "\nSpearman's rank correlation computed with each k_fold (not the means).")
-    } else {
-        caption <- paste0(
-            "Large points: mean over k-folds (bars: SE across folds).",
-            "Dotted line: linear fit on the means. ",
-            "\nSpearman's rank correlation computed with each k_fold (not the means).")
+        p <- p + geom_point(
+            position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.75),
+            size = 0.8, alpha = 0.5, colour = "grey20", show.legend = FALSE)
     }
 
-    p <- ggplot(designs, aes(x = x, y = y)) +
-        geom_abline(
-            intercept = 0, slope = 1,
-            colour = "grey60", linetype = "dotted", linewidth = 0.6,
-            inherit.aes = FALSE) +
-        fold_layer +
-        geom_linerange(
-            aes(ymin = y - y_se, ymax = y + y_se, colour = .data[[strat_var]]),
-            alpha = 0.4) +
-        geom_linerange(
-            aes(xmin = x - x_se, xmax = x + x_se, colour = .data[[strat_var]]),
-            orientation = "y", alpha = 0.4) +
+    p <- p +
         geom_point(
-            aes(colour = .data[[strat_var]], size = .data[[strat_var]]),
-            alpha = 0.9) +
-        scale_colour_manual(values = colors, name = "Strategy") +
-        scale_size_manual(values = point_sizes, name = "Strategy") +
-        facet_wrap(vars(.panel), scales = "free") +
+            data = violin_summary,
+            aes(x = .data[[x_col]], y = m, group = .data[[strat_col]]),
+            inherit.aes = FALSE, position = dodge,
+            shape = 23, size = 2.5, fill = "white", colour = "black") +
+        geom_hline(yintercept = 0, linetype = "dashed") +
         labs(
-            title = title,
-            subtitle = subtitle,
-            x = if (is.null(x_label)) x_metric else x_label,
-            y = if (is.null(y_label)) y_metric else y_label,
-            caption = caption)
+            title = if (is.null(title)) metric else title,
+            subtitle = .direction_note(lower_is_better),
+            caption = bottom_caption,
+            fill = if (is.null(strat_var)) NULL else .pretty_label(strat_var),
+            x = if (is.null(x_var)) NULL else .pretty_label(x_var),
+            y = paste0(y_label, metric))
 
-    p <- my_custom_ggplot_theme(p, with_palette = FALSE)
+    # faceting: rows = size (and panel if species take the columns)
+    p <- p + if (group_species) {
+        .facets(rows = size_var, cols = panel_var, scales = "free_y")
+    } else {
+        .facets(rows = c(panel_var, size_var), cols = "sp", scales = "free_y")
+    }
+
+    p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
+        scale_fill_manual(
+            values = fill_colors,
+            guide = if (is.null(strat_var)) "none" else "legend")
+
+    if (is.null(x_var)) {
+        p <- p + theme(axis.text.x = element_blank(),
+                       axis.ticks.x = element_blank())
+    } else {
+        p <- p + scale_x_discrete(labels = abbreviate_labels)
+    }
 
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
-    list(
-        data = designs, data_folds = designs_folds, 
-        stats = panel_stats, plot = p)
-}
-
-# A custom helper for transform_scale parameters (transforms a linear color
-# scale into a mirrored log one, starting at offset_high).
-# ARGS:
-#   - offset_high: a numeric. The starting point of the log scale (reversed).
-# RETURNS:
-#   - a scales::new_transform() object.
-mirrored_log_trans <- function(offset_high) {
-  scales::new_transform(
-    name      = paste0("mirrored_log_", offset_high),
-    transform = function(x) -log(offset_high - x),
-    inverse   = function(x) offset_high - exp(-x),
-    domain    = c(-Inf, offset_high)  # strictly below offset_high
-  )
+    list(data = diffs_df, plot = p)
 }

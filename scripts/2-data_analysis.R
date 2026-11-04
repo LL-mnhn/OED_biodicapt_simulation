@@ -366,7 +366,7 @@ plots <- lapply(seq_along(names(t_envs_raster)), function(i) {
                                     buffer = 0)) +
         ggtitle(n) +
         scale_fill_gradientn(
-            colours = CONTRASTED_PLASMA_COLOURS,
+            colours = CUSTOM_CMAP,
             trans    = "identity",
             name    = t_envs_units[[i]],
             na.value = "transparent",
