@@ -205,7 +205,7 @@ NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
 
 ### Simulations and Models ----------------------------------------------------
-K_FOLDS <- 12
+K_FOLDS <- 10
 PROBABILITY_TP <- 0.95 # detection rate : True Positives detected
 PROBABILITY_FP <- 0.05 # error rate : False positives detected
 
@@ -305,10 +305,9 @@ LIGHT_CUSTOM_SCALES <- list(
 GG_TERRAIN_PALETTE <- colorRampPalette(c(
     "#f7f4f9", "#f7f4f9", "#e8a0a0", "#e8935a", "#e8c93a", 
     "#8fc93a", "#2ca02c", "#22b0b0", "#22b0b0"))(10)
-
-
 PLAMSA_CONTRASTED <- c(
     "#00008B", "#0000FF", "#A020F0", "#FF69B4", "#FFA500", 
     "#FFFF00")
 JET_CLASSIC <- turbo(256)
 CUSTOM_CMAP <- JET_CLASSIC
+CUSTOM_POINT_CMAP <- PLAMSA_CONTRASTED

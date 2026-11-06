@@ -630,7 +630,7 @@ ggplot_quantitative_df_on_background_map <- function(
         unit = NULL,
         limits = NULL,
         precision_auto_limits = 1e-5,
-        cols = CUSTOM_CMAP,
+        cols = CUSTOM_POINT_CMAP,
         transform_scale = "sqrt",
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 

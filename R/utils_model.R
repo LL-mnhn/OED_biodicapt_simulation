@@ -785,11 +785,46 @@ get_posterior_design_metrics <- function(
         Ds[j] <- -as.numeric(determinant(
             post_cov[idx_act, idx_act, drop = FALSE], logarithm = TRUE)$modulus)
         Xw <- X * dnorm(eta[, j])
-        I[j] <- mean(rowSums((Xw %*% post_cov) * Xw))
+        I[j] <- -mean(rowSums((Xw %*% post_cov) * Xw))
     }
     out <- list(
         BetaSD = BetaSD, BetaSD_actionable = BetaSD_actionable, Ds = Ds, I = I)
     lapply(out, function(v) setNames(v, hM$spNames))
+}
+
+# Ratio of posterior SDs of Beta between a retrained model and a reference 
+# model, on the standardised X scale.
+# ARGS:
+#   - hM_new, hM_ref: fitted Hmsc objects (same species, same covariates).
+#   - x_cols: the explanatory variables (see get_standardised_posterior).
+#   - actionable: the actionable parameters (subset of x_cols).
+#   - scaling_data: a COMMON dataset for standardising X in both models.
+# RETURNS: a list of named vectors (one value per species):
+#   - BetaSD_ratio: geometric mean over ALL coefficients (incl. intercept) of 
+#       SD_new / SD_ref. 
+#   - BetaSD_actionable_ratio: same, over the actionable coefficients only.
+#   1 = no change; < 1 = the new model is more precise than the reference.
+get_beta_sd_ratio <- function(
+        hM_new, hM_ref, x_cols, actionable, scaling_data = NULL) {
+    idx_act <- match(actionable, hM_new$covNames)
+    if (anyNA(idx_act)) {
+        stop("`actionable` contains variables absent from the model.")
+    }
+    stopifnot(
+        identical(hM_new$covNames, hM_ref$covNames),
+        identical(hM_new$spNames, hM_ref$spNames))
+
+    posterior_sd <- function(hM) { # matrix (p x n_species)
+        beta_std <- get_standardised_posterior(hM, x_cols, scaling_data)$beta_std
+        apply(beta_std, c(1, 2), sd)
+    }
+    log_ratio <- log(posterior_sd(hM_new) / posterior_sd(hM_ref))
+
+    out <- list(
+        BetaSD_ratio = exp(colMeans(log_ratio)),
+        BetaSD_actionable_ratio = exp(
+            colMeans(log_ratio[idx_act, , drop = FALSE])))
+    lapply(out, function(v) setNames(v, hM_new$spNames))
 }
 
 # A function to display convergence diagnostics for a Hmsc model.
@@ -846,16 +881,16 @@ evaluate_hmsc_performances <- function(
 #   - newdata: a dataframe of candidate sites with columns listed in x_cols.
 #       Must not contain NAs in x_cols.
 #   - x_cols: a vector of strings, the names of the explanatory variables.
-# RETURNS: a list
-#   - X: matrix (n_candidates x p), standardised design matrix of candidates.
-#   - M0: array (p x p x n_species), current information matrices.
-#   - w: matrix (n_candidates x n_species), information weights.
-#   - beta_hat: matrix (p x n_species), posterior mean of Beta (standardised X).
 #   - scaling_data: a dataframe with columns x_cols, or NULL (default). The 
 #       means and SDs used to standardise X are computed on this dataset. When 
 #       NULL, the training data of the model are used. Use a COMMON dataset to
 #       compare models trained on different sites: the value of Ds, for 
 #       example, shifts by a constant that depends on the scaling used.
+# RETURNS: a list
+#   - X: matrix (n_candidates x p), standardised design matrix of candidates.
+#   - M0: array (p x p x n_species), current information matrices.
+#   - w: matrix (n_candidates x n_species), information weights.
+#   - beta_hat: matrix (p x n_species), posterior mean of Beta (standardised X).
 get_hmsc_information <- function(hM, newdata, x_cols, scaling_data = NULL) {
     if (!inherits(hM, "Hmsc")) {
         stop("'hM' must be a fitted Hmsc object.")
@@ -1040,7 +1075,7 @@ get_expected_design_metrics <- function(info, actionable, target = NULL) {
             solve(Minv[idx_act, idx_act, drop = FALSE]), 
             logarithm = TRUE)$modulus)
         if (!is.null(B)) {
-            I[j] <- sum(Minv * B[, , j])   # tr(Minv B), both symmetric
+            I[j] <- -sum(Minv * B[, , j])   # tr(Minv B), both symmetric
         }
     }
     out <- list(Ds_expected = Ds)

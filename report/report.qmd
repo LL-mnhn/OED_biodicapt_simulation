@@ -87,14 +87,13 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/biodicapt_sampling_locations_
 ```
 
-![Positions (approximative, for confidentiality) of the fields sampled in the BIODICAPT project. *Each field belong to a zone, which is the name of the laboratory handling data collection for this zone.*](images/biodicapt_sampling_locations_.png){#fig-biodicapt width=75%}
+![Positions (approximative, for confidentiality) of the fields sampled in the BIODICAPT project. *Each field belong to a zone, which is the name of the laboratory handling data collection for this zone.*](./images/biodicapt_sampling_locations_.png){#fig-biodicapt width=75%}
 
 For the BIODICAPT project, additionnal data needs to be collected in order to better represent the varying agricultural contexts in France metropolitan area. In order to do this, the project aims at collecting data on a larger scale using the 500 ENI network.
 
@@ -110,14 +109,13 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/eni500_sampling_locations_
 ```
 
-![Positions (approximative, for confidentiality) of the fields sampled in the 500 ENI network.](images/eni500_sampling_locations_.png){#fig-eni500 width=75%}
+![Positions (approximative, for confidentiality) of the fields sampled in the 500 ENI network.](./images/eni500_sampling_locations_.png){#fig-eni500 width=75%}
 
 ### Constraints
 The BIODICAPT project collects data on flora, using a protocol that is directly adapted from the one that has been in use in the 500 ENI network since 2012. Therefore there is no need re-sample wild flora in the 500 ENI network
@@ -172,7 +170,6 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
@@ -188,14 +185,13 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*25/100 )) -y $(( H*0/100 )) \
   -W $(( W*50/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/corine
 ```
 
-![CORINE Land Cover over France in 2018 (simplified categories, source: Copernicus).](images/corine.png){#fig-CLC width=100%}
+![CORINE Land Cover over France in 2018 (simplified categories, source: Copernicus).](./images/corine.png){#fig-CLC width=100%}
 
 #### NDVI
 ```{bash}
@@ -205,13 +201,12 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/ndvi
 ```
-![NDVI estimates over France for 2018 (source: NASA-Earthdata).](images/ndvi.png){#fig-ndvi0 width=80%}
+![NDVI estimates over France for 2018 (source: NASA-Earthdata).](./images/ndvi.png){#fig-ndvi0 width=80%}
 
 #### Light pollution
 ```{bash}
@@ -221,13 +216,12 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/light_pollution
 ```
-![Light pollution over France in 2018 (Digital Number (unitless in 0-63), source: Dryad).](images/light_pollution.png){#fig-light-poll width=80%}
+![Light pollution over France in 2018 (Digital Number (unitless in 0-63), source: Dryad).](./images/light_pollution.png){#fig-light-poll width=80%}
 :::
 
 ### Simulation of species distributions
@@ -245,13 +239,12 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/sim_rank-occurence_stoc
 ```
-![Rank-occurence curve of species in the STOC dataset, compared to several runs (k=10) of simulated species (n=40).](images/sim_rank-occurence_stoc.png){#fig-roc_stoc width=100%}
+![Rank-occurence curve of species in the STOC dataset, compared to several runs (k=10) of simulated species (n=40).](./images/sim_rank-occurence_stoc.png){#fig-roc_stoc width=100%}
 
 ## Model
 To model the distribution of our simulated species over France's metropolitan area, we use a specific type of Species Distribution Models (SDM): a Joint Species Distribution Models (JSDM). These models make use of several species distributions to find *latent* links between them, which supposedly improves the prediction accuracy[^2].
@@ -261,7 +254,7 @@ To model the distribution of our simulated species over France's metropolitan ar
 ### HMSC
 For this work, HMSC (Hierarchical Modelling of Species Communities) is a good fit. It is a JSDM developped by Ovaskainen et al. (2017) [@ovaskainen_how_2017], and distributed as an open-source R-package on [GitHub](https://github.com/hmsc-r/HMSC/) [@tikhonov_joint_2020]. Due to its *relative* simplicity and ease of use, it is undoubtebly the most widely used JSDM in the last years. Its principle is summarised in the next figure, extracted from its original publication [@ovaskainen_how_2017]:
 
-![Copy of Figure 4 from Ovaskainen et al. (2017) [@ovaskainen_how_2017]](images/figure4_ovaskainen_2017.png){#fig-HMSC width=100%}
+![Copy of Figure 4 from Ovaskainen et al. (2017) [@ovaskainen_how_2017]](./images/figure4_ovaskainen_2017.png){#fig-HMSC width=100%}
 
 ### Other models?
 ::: {.callout-caution collapse="true"}
@@ -282,7 +275,7 @@ This process will be repeated 10 times, each time using a different set a 40 sim
 
 Here is a visual summary of the process :
 
-![Diagram showing the process followed for the adaptive sampling in this study.](images/flowchart_HMSC_training.png){#fig-OED-BIODICAPT width=100%}
+![Diagram showing the process followed for the adaptive sampling in this study.](./images/flowchart_HMSC_training.png){#fig-OED-BIODICAPT width=100%}
 
 ### Selecting new samples
 Now the question you should be asking yourself is "how do you choose which points should be added to the dataset that is used to train HMSC?".
@@ -753,6 +746,12 @@ $$
 \boxed{\;\Psi_{I} \;=\; -\operatorname{tr}\!\bigl(M^{-1} B\bigr)\;}
 $$
 
+::: {.callout-note collapse="true"}
+#### Quick note
+Usually, the I-criterion is defined as $\operatorname{tr}\!\bigl(M^{-1} B\bigr)$, which has to be minimised. Here we flip the sign so that the criterion has to be maximised, in order to create consistency with the Ds-criterion.
+:::
+
+
 or in our case:
 
 $$
@@ -866,11 +865,13 @@ Same as for Ds, it is used to check that the designs rank as predicted, not to r
 
 # Results
 ## Approximations
-To compute the Fisher Information Matrix (FIM), and thus our criteria, we assumed that HMSC could be linearised after an initial fit, which we based on BIODICAPT's data collection (see [@sec-fisher-approx]).
+To compute the Fisher Information Matrix (FIM), and thus our criteria, we assumed that HMSC ***could*** be linearised after its initial fit, which we based on BIODICAPT's data collection (see [@sec-fisher-approx]).
 
-Once the model is re-trained on BIODICAPT + the sites chosen inside 500 ENI, we can compare its expected criteria ([@sec-application-ds] \& [@sec-application-i]) to its realised values ([@sec-evaluation-ds] \& [@sec-evaluation-i]), parameters and predictions. This enables us to conduct a high-level check to confirm that the approximation of the FIM produced the expected results.
+Once the model is re-trained on BIODICAPT + the sites chosen inside 500 ENI, we can compare its expected criteria ([@sec-application-ds] \& [@sec-application-i]) to its realised values ([@sec-evaluation-ds] \& [@sec-evaluation-i]), parameters and predictions. This enables us to conduct a high-level check to confirm that the approximation of the FIM do produce the expected results. 
 
-**Checking the approximations:**
+As a reminder, Ds-optimality should be reached when the Ds-criterion is maximal, which should also be when the SD of the estimated fixed parameters for our actionable variables is minimal. On the other hand, I-optimality should be reached when the I-criterion is maximal, which should be when the SD of the predictions is minimal.
+
+**Plotting expected VS realised metrics:**
 
 ::: {.panel-tabset}
 ### Ds-criterion
@@ -881,7 +882,6 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
@@ -897,7 +897,6 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*30/100 )) -y $(( H*0/100 )) \
   -W $(( W*40/100 ))  -H $(( H*100/100 )) \
@@ -914,13 +913,12 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*20/100 )) -y $(( H*0/100 )) \
   -W $(( W*60/100 ))  -H $(( H*100/100 )) \
   "$f" ./images/i-criterion_expected_vs_realised
 ```
-![Expected VS realised I-criterion. This criterion has to be minimised to make better predictions.](./images/i-criterion_expected_vs_realised.png){#fig-i-criterion_expected_vs_realised width=80%}
+![Expected VS realised I-criterion. This criterion has to be maximised to make better predictions.](./images/i-criterion_expected_vs_realised.png){#fig-i-criterion_expected_vs_realised width=80%}
 
 ### Predictions
 ```{bash}
@@ -930,7 +928,6 @@ dpi=300
 # page size in pixels at the chosen dpi
 read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
 
-# inset(top=15%, right=2.5%, bottom=5%, left=2.5%)
 pdftoppm -png -r $dpi -singlefile \
   -x $(( W*20/100 )) -y $(( H*0/100 )) \
   -W $(( W*60/100 ))  -H $(( H*100/100 )) \
@@ -939,30 +936,200 @@ pdftoppm -png -r $dpi -singlefile \
 ![Expected I-criterion VS SD of predictions. We expect that the lower the I-criterion, the lower the SD of the predictions.](./images/i-criterion_expected_vs_predictions.png){#fig-i-criterion_expected_vs_predictions width=80%}
 :::
 
+These plots are aligned with what we hoped to get:
+
+- **Expected and realised Ds-criteria** are strongly positively correlated. Expected Ds-criterion is under the realised Ds-criterion: our approximation is conservative and underestimates the gains.
+- **Expected Ds-criterion and SD of actionable parameters** are strongly negatively correlated. As Ds is a criterion that minimises the uncertainty of our actionable parameters, this is what we expect.
+- **Expected and realised I-criteria** are strongly positevely correlated and mostly within expected boundaries, except for strategy "ds-optimality". This could be because Ds-optimality picks sites where or linearisation (computed from the initial reference model) breaks, or because or actionable variables are only intesting in an "extreme" part of the covariate space. Still, despite the associated standard deviation, it ranks where we would expect it to rank.
+- **Expected I-criterion and SD of predictions** are negatively correlated, although with large variations.
+
+Another plot is worth analysing seperately:
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/ds-criterion_expected_vs_all_parameters_SD.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/ds-criterion_expected_vs_all_parameters_SD
+```
+![Expected Ds-criterion VS SD of all parameters. We expect that the higher the Ds-criterion, the lower the SD of the predictions.](./images/ds-criterion_expected_vs_all_parameters_SD.png){#fig-ds-criterion_expected_vs_all_parameters_SD width=80%}
+
+It does not help to validate our approximations but is interesting for at least two reasons:
+
+1. It shows an absence of correlation between Ds-criterion and the SD of all parameters, mainly because of the Ds-optimality strategy: it optimises the estimation of a subset of the parameters, which causes everything else to be treated as nuisance parameters, whose uncertainty do not matter.
+2. Strategies *max-uncertainty* and *i-optimality* optimise for best predictions, but here they seem to also bring the SD of parameters down. This is a side effect of prediction optimisation: to get good predictions, one must estimate parameters as precisely as possible, so the two are linked together[^8], which is what we see here.
+
+[^8]: To really estimate *all* parameters precisely, the use of a D-optimality criterion would be more appropriate, it can be easily computed from our Ds-criterion but is not the subject of this study.
+
+Overall, **the ranking of every strategy is the exact one that we expected to obtain**, which validates our approximations. With this in mind, we can explore the implications for our sampling designs, and our results.
 
 ## Sampling in 500 ENI
+
+### Estimated parameters 
+
+This subsection is optional as it mainly showcases a subset of the results analysed in the previous section.
+
+::: {.panel-tabset}
+#### SD of all parameters
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/violinplots_SD_parameters_all.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/violinplots_SD_parameters_all
+```
+![Violinplot showing the average SD of all fixed parameters for each re-trained, compared to the average SD of the parameters of reference models.](./images/violinplots_SD_parameters_all.png){#fig-violinplots_SD_parameters_all width=80%}
+
+#### SD of actionable parameters
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/violinplots_SD_parameters_actionable_distrib.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*30/100 )) -y $(( H*0/100 )) \
+  -W $(( W*40/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/violinplots_SD_parameters_actionable_distrib
+```
+![Violinplot showing the average SD of actionable parameters for each re-trained model, compared to the average SD of actionable paramaters of reference models.](./images/violinplots_SD_parameters_actionable_distrib.png){#fig-violinplots_SD_parameters_actionable_distrib width=80%}
+:::
+
+There are no surprises after the analysis of the previous section:
+- To improve the mean SD of all parameters, the strategies rank as following (best to worst): i-optimality, max-uncertainty, random-sampling and Ds-optimality.
+- However, to improve the mean SD of the actionable parameters only, the strategies rank as following (best to worth): ds-optimality, i-optimality, max-uncertainty and random-sampling.
+
+Having Ds-optimality perform worst than random-sampling in the estimation of the whole set of parameters should be highlighted: a covering sampling plan yields better estimations than a Ds-optimal one because it considers that most of the parameters are "nuisance" parameters, and therefore they do not need to be perfectly estimated to get good estimations of the actionable parameters.
+
+
+### Predictions
+::: {.panel-tabset}
+#### MSE
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/violinplots_MSE_distrib.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*10/100 )) -y $(( H*0/100 )) \
+  -W $(( W*80/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/violinplots_MSE_distrib
+```
+![Violinplot showing the average MSE of each re-trained model, compared to the average MSE of reference models.](./images/violinplots_MSE_distrib.png){#fig-violinplots_MSE_distrib width=80%}
+
+#### Delta MSE
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/boxplot_MSE.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*10/100 )) -y $(( H*0/100 )) \
+  -W $(( W*80/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/MSE_delta
+```
+![Violinplot showing the gain in MSE (negative) of each re-trained model, compared to the average MSE of reference models.](./images/MSE_delta.png){#fig-delta-mse width=80%}
+
+#### Improved species
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/MSE_delta_n_sp.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*10/100 )) -y $(( H*0/100 )) \
+  -W $(( W*80/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/MSE_delta_n_sp
+```
+![Number of species with an improvement >1% in delta MSE compared to the base (BIODICAPT only) model.](./images/MSE_delta_n_sp.png){#fig-delta-mse-n-sp width=80%}
+
+
+#### SD of predictions
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/violinplots_SD_distrib.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*10/100 )) -y $(( H*0/100 )) \
+  -W $(( W*80/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images/violinplots_SD_distrib
+```
+![Violinplot showing the average SD of prediction for each re-trained model, compared to the average SD of predictions of reference models.](./images/violinplots_SD_distrib.png){#fig-violinplots_SD_distrib width=80%}
+:::
+
 ::: {.callout-note collapse="false"}
-## To be continued...
+## Interpretation: to do...
 
 This report is still under construction, come back later! 
 :::
 
+### Maping best locations
+
+```{bash}
+#| echo: false
+f=../outputs/results_analyses/freq-new-locations.pdf
+dpi=300
+# page size in pixels at the chosen dpi
+read W H < <(pdfinfo "$f" | awk -v d=$dpi '/Page size/ {printf "%d %d", $3*d/72, $5*d/72}')
+
+pdftoppm -png -r $dpi -singlefile \
+  -x $(( W*0/100 )) -y $(( H*0/100 )) \
+  -W $(( W*100/100 ))  -H $(( H*100/100 )) \
+  "$f" ./images//freq-new-locations
+```
+![Maps showing at which frequency each site of the 500 ENI network was chosen by each strategy to be added to the data training pool.](./images/freq-new-locations.png){#fig-freq-new-locations width=80%}
+
+
+::: {.callout-note collapse="false"}
+## Interpretation: to do...
+
+This report is still under construction, come back later! 
+:::
 
 ## Comparison with previous works
 
-This study was partly inspired by Mondain-Monval et al. (2024) [@mondainmonval_adaptive_2024]. The strategies "random-sampling", "gap-filling" and max-uncertainty" are directly based on their work, although we modified several aspects of their methods:
+This study was partly inspired by Mondain-Monval et al. (2024) [@mondainmonval_adaptive_2024]. The strategies "random-sampling", "gap-filling" and max-uncertainty" are directly reproduced from their work, although we modified several other aspects of their methods:
 
-| Parameter | M.M. [@mondainmonval_adaptive_2024] | Ours |
+|   Method  | M.M. [@mondainmonval_adaptive_2024] | Ours |
 |:---------:|:---------:|:---------:|
 | Simulated dataset | Based on butterfly data | Based on STOC (FBBS) data |
 | Number of species | 50 species | 40 species |
-| Number of variables | 10 (randomly selected from 33 available) | 15 (hand picked, containing 2 actionable variables[^8]) |
+| Number of variables | 10 (randomly selected from 33 available) | 15 (hand picked, containing 2 actionable variables[^9]) |
 | Model type | Ensemble model (GLM + GAM + RF) | HMSC |
 | Re-training | Mixing of 1%, 10% or 50% of the initial dataset | Addition of new samples (50) to the initial dataset |
 | Training size | 2000 cells | 150 locations + 50 new locations |
 
-[^8]: for now, it is "light pollution" and "swf" as we consider that these are the only two variables that local politics cainfluence.
+[^9]: for now, it is "light pollution" and "swf" as we consider that these are the only two variables that local politics can influence.
 
+In their article, Mondain-Monval et al. (2024) [@mondainmonval_adaptive_2024] show interesting results, that we can compare to ours:
+
+![Copy of Figure 3 from Mondain-Monval et al. (2024) [@mondainmonval_adaptive_2024]](./images/figure3_mondain-monval_2024.png){#fig-figure3-MM width=80%}
+
+We assume that [@mondainmonval_adaptive_2024] show their results on a test set. Depending on the sampling strategy they use, they report gains up to about 0.0075 in MSE for their best run (but most medians in their 50% mix yield to a gain of about 0.0015 in MSE). Our results show improvements on a test set that are between 0.0075-0.03 in MSE depending on strategy and type of test set.
+
+There is a difference of a factor 5 between our measured improvements and theirs, which can be attribuated to our initial re-sampling strategies: where [@mondainmonval_adaptive_2024] replaces old sampled locations to keep the same number of sampled sites, we are adding *new* sites. By construction, this gives more information to train our models, and make better predictions. In addition, the use HMSC (a jSDM model) might help to make better predictions compared to SSDMs thanks to the use of latent factors.
+
+
+# Discussion
 
 ::: {.callout-note collapse="false"}
 ## To be continued...

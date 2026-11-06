@@ -131,6 +131,17 @@ fetch_all_scores <- function() {
                 scaling_data = as.data.frame(k_dataset$train))
         }        
 
+        # Ratio of posterior SDs (retrained / reference), same X scaling
+        ratio_scores <- NULL
+        if (!is.null(ref_chains)) {
+            ratio_scores <- get_beta_sd_ratio(
+                hM_new = chains,
+                hM_ref = ref_chains,
+                x_cols = X_VARIABLES,
+                actionable = ACTIONABLE_VARIABLES,
+                scaling_data = as.data.frame(k_dataset$train))
+        }
+
         for (j in 1:length(local_datasets)) {
             cli_alert_info("    - computing scores on dataset {j}/{length(local_datasets)} ...")
 
@@ -155,6 +166,13 @@ fetch_all_scores <- function() {
                 all_scores, 
                 format_scores(
                     scores, local_parameters, names(local_datasets)[j]))
+
+            if (!is.null(ratio_scores)) {
+                all_scores <- rbind(
+                    all_scores,
+                    format_scores(
+                        ratio_scores, local_parameters, names(local_datasets)[j]))
+            }
             
             # Expected (approximated) Ds and I from the reference model
             if (!is.null(ref_info)) {
@@ -576,6 +594,8 @@ scores_df <- scores_df |>
         "SD" = "SD of predictions",
         "BetaSD" = "SD of parameters (all)",
         "BetaSD_actionable" = "SD of actionable parameters",
+        "BetaSD_ratio" = "SD ratio of parameters (all)",
+        "BetaSD_actionable_ratio" = "SD ratio of actionable parameters",
         "Ds" = "Ds criterion (realised)",
         "I" = "I criterion (realised)",
         "Ds_expected" = "Ds criterion (expected)",
@@ -638,6 +658,26 @@ standardised_ggplot_save(
     dsparam_corr_plot$plot, 
     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD.pdf"))
 
+dsparam_ratio_corr_plot <- corr_metrics(
+    scores = compare_df, 
+    x_metric = "Ds criterion (expected)",
+    y_metric = "SD ratio of actionable parameters",
+    title = "Expected Ds criterion VS SD ratio of actionable parameters",
+    strat_var = "STRATEGIES", 
+    strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    panel_order = c("train"),
+    lower_is_better = FALSE,
+    save_to = NULL)
+dsparam_ratio_corr_plot$plot <- dsparam_ratio_corr_plot$plot + 
+    labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)")
+print(dsparam_ratio_corr_plot$plot)
+standardised_ggplot_save(
+    dsparam_ratio_corr_plot$plot, 
+    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD_ratio.pdf"))
+
 dsallparam_corr_plot <- corr_metrics(
     scores = compare_df, 
     x_metric = "Ds criterion (expected)",
@@ -658,6 +698,27 @@ standardised_ggplot_save(
     dsallparam_corr_plot$plot, 
     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD.pdf"))
 
+dsallparam_ratio_corr_plot <- corr_metrics(
+    scores = compare_df, 
+    x_metric = "Ds criterion (expected)",
+    y_metric = "SD ratio of parameters (all)",
+    title = "Expected Ds criterion VS SD ratio of all parameters",
+    strat_var = "STRATEGIES", 
+    strat_order = ORDER_STRATS,
+    size_var = "NEW_SAMPLE_SIZES", 
+    size_order = NULL,
+    panel_var = "subset", 
+    panel_order = c("train"),
+    lower_is_better = FALSE,
+    save_to = NULL)
+dsallparam_ratio_corr_plot$plot <- dsallparam_ratio_corr_plot$plot + 
+    labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)")
+print(dsallparam_ratio_corr_plot$plot)
+standardised_ggplot_save(
+    dsallparam_ratio_corr_plot$plot, 
+    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD_ratio.pdf"))
+
+
 i_corr_plot <- corr_metrics(
     scores = compare_df, 
     x_metric = "I criterion (expected)",
@@ -668,7 +729,7 @@ i_corr_plot <- corr_metrics(
     size_var = "NEW_SAMPLE_SIZES", 
     size_order = NULL,
     panel_var = "subset", 
-    lower_is_better = TRUE,
+    lower_is_better = FALSE,
     panel_order = c("test_local", "test_stoc"),
     save_to = file.path(ANALYSES_PATH, "i-criterion_expected_vs_realised.pdf"))
 print(i_corr_plot$plot)
@@ -685,8 +746,13 @@ ipred_corr_plot <- corr_metrics(
     panel_var = "subset", 
     lower_is_better = TRUE,
     panel_order = c("test_local", "test_stoc"),
-    save_to = file.path(ANALYSES_PATH, "i-criterion_expected_vs_predictions.pdf"))
+    save_to = NULL)
+ipred_corr_plot$plot <- ipred_corr_plot$plot + 
+    labs(subtitle = "(I: higher is better, SD: lower is better)")
 print(ipred_corr_plot$plot)
+standardised_ggplot_save(
+    ipred_corr_plot$plot, 
+    file.path(ANALYSES_PATH, "i-criterion_expected_vs_predictions.pdf"))
 
 
 ##### Check strategy effect on estimations/predictions ##### ------------------
