@@ -281,8 +281,9 @@ ACTIONABLE_VARIABLES <- c("light.pollution", "swf")
 ### Plot styling --------------------------------------------------------------
 FONT <- ifelse((Sys.info()["user"] == "lehnhofl")[[1]], "sans", "Lexend")
 PALETTE <- c("#D9054E", "#28A349", "#246CBC", 
-             "#5D7B84", "#C2562F", "#FFB703",
-             "#7B2CBF", "#333333", "#0FA3B1", "#890f40")
+             "#FFB703", "#C2562F", "#5D7B84",
+             "#7B2CBF", "#333333", "#0FA3B1", 
+             "#890f40")
 
 SHAPES <- c(21, 22, 23, 24, 25, 8, 13, 7)
 SIZES <- c(1.66, 1.85, 1.66, 1.5, 1.5, 1, 1, 1)

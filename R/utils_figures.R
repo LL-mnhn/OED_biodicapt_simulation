@@ -5,6 +5,7 @@ library(colorspace)
 library(dotwhisker)
 library(tidyterra)
 library(patchwork)
+library(ggspatial)
 library(reshape2)
 library(lmerTest)
 library(MCMCvis)
@@ -196,20 +197,24 @@ ggplot_get_france_base_map <- function(
     base_map <- ggplot(europe_shp) +
         geom_sf(fill = "grey80", color = "white") +                     # color of countries
         geom_sf(data = france_shp, fill = "white", color = "black") +   # color of France
+        coord_sf(
+            crs = PROJECT_CRS,              # CRS the map is drawn in
+            xlim = c(lon_min, lon_max), 
+            ylim = c(lat_min, lat_max)) +
+        annotation_scale(
+            location = "bl", width_hint = 0.25, 
+            style = "ticks", text_family = FONT) +     
+        annotation_north_arrow(
+            location = "tr", which_north = "true",
+            style = north_arrow_fancy_orienteering(text_family = FONT)) +
         theme_minimal() +
         theme(
             panel.background = element_rect(fill = "lightcyan1", color = NA),
             panel.grid.major = element_line(color = "lightcyan1"),
-            panel.grid.minor = element_line(color = "lightcyan1")
-        ) +
+            panel.grid.minor = element_line(color = "lightcyan1")) +
         labs(
             x = "longitude",
-            y = "latitude"
-        ) +
-        coord_sf(
-            crs = PROJECT_CRS,              # CRS the map is drawn in
-            xlim = c(lon_min, lon_max), 
-            ylim = c(lat_min, lat_max))
+            y = "latitude")
     
     return(my_custom_ggplot_theme(base_map, with_palette=FALSE, is_map = TRUE))
 }
@@ -1034,9 +1039,10 @@ safe_spearman <- function(x, y) {
 #   - random_strategy: strategy drawn in grey (small points).
 #   - show_folds: draw each individual fold as a small transparent point.
 #   - save_to: filepath ending in ".pdf".
+#   - summary_fun: a function to summarise k_folds (mean or median usually)
 # RETURNS: 
 #   a list containing:
-#       - data: mean and SE across folds, 
+#       - data: summary_fun and SE across folds, 
 #       - data_folds:one row per strategy and fold, 
 #       - stats: Spearman per panel,
 #       - plot: the resulting ggplot
@@ -1046,7 +1052,7 @@ corr_metrics <- function(
         strat_var = "STRATEGIES", strat_order = NULL,
         size_var = "NEW_SAMPLE_SIZES", size_order = NULL,
         panel_var = "subset", panel_order = NULL,
-        random_strategy = "random-sampling",
+        random_strategy = "random-sampling", summary_fun = mean,
         show_folds = TRUE, lower_is_better = FALSE,
         save_to = NULL) {
 
@@ -1081,19 +1087,19 @@ corr_metrics <- function(
         stop("No design has both '", x_metric, "' and '", y_metric, "'.")
     }
 
-    # Mean over folds, with the standard error across folds
-    mean_df <- folds_df |>
+    # summary_fun over folds, with the standard error across folds
+    summary_df <- folds_df |>
         group_by(across(all_of(setdiff(keys, "k")))) |>
         summarise(
             n_folds = n(),
             x_se = sd(x) / sqrt(n()),
             y_se = sd(y) / sqrt(n()),
-            x = mean(x),
-            y = mean(y),
+            x = summary_fun(x),
+            y = summary_fun(y),
             .groups = "drop")
 
     # 2. Strategies: grey for random sampling, palette for the others
-    lvls <- .strategy_levels(mean_df[[strat_var]], strat_order, random_strategy)
+    lvls <- .strategy_levels(summary_df[[strat_var]], strat_order, random_strategy)
     colors <- .strategy_colours(lvls, random_strategy)
     point_sizes <- setNames(ifelse(lvls %in% random_strategy, 1.5, 3), lvls)
 
@@ -1119,13 +1125,17 @@ corr_metrics <- function(
             .set_factor(size_var, size_order) |>
             .set_factor(panel_var, panel_order)
     }
-    mean_df  <- prep(mean_df) |> arrange(.data[[strat_var]])
+    summary_df  <- prep(summary_df) |> arrange(.data[[strat_var]])
     folds_df <- prep(folds_df) |> arrange(.data[[strat_var]])
     stats    <- prep(stats)
 
     # 4. Plot
     # Should points for each individual k_fold should be shown?
-    caption <- paste0("Diamonds: mean over k-folds (bars: SE across folds).")
+    name_fn_summary <- deparse1(substitute(summary_fun))
+    caption <- paste0(
+        "Diamonds: ", name_fn_summary, 
+        " over k-folds (bars: SE across folds)."
+    )
     if (show_folds) {
         fold_layer <- geom_point(
             data = folds_df,
@@ -1138,7 +1148,7 @@ corr_metrics <- function(
     caption <- paste0(caption, 
         " Dotted line: y = x.",
         "\nSpearman's rank correlation computed across individual folds ",
-        "(not the means).")
+        "(not the ", name_fn_summary, "s).")
 
     if (is.null(x_label)) {
         x_lab <- x_metric 
@@ -1151,7 +1161,7 @@ corr_metrics <- function(
         y_lab <- y_label
     } 
 
-    p <- ggplot(mean_df, aes(x = x, y = y)) +
+    p <- ggplot(summary_df, aes(x = x, y = y)) +
         geom_abline(
             intercept = 0, slope = 1,
             colour = "grey60", linetype = "dotted", linewidth = 0.6,
@@ -1171,7 +1181,7 @@ corr_metrics <- function(
             data = stats, aes(label = label),
             x = -Inf, y = Inf, hjust = -0.05, vjust = 1.4, size = 3,
             inherit.aes = FALSE) +
-        .facets(rows = size_var, cols = panel_var, scales = "free") +
+        .facets(rows = panel_var, cols = size_var, scales = "free") +
         labs(
             title = if (is.null(title)) paste(y_lab, "vs", x_lab) else title,
             subtitle = .direction_note(lower_is_better),
@@ -1186,7 +1196,7 @@ corr_metrics <- function(
     if (!is.null(save_to)) {
         standardised_ggplot_save(p, save_to)
     }
-    list(data = mean_df, data_folds = folds_df, stats = stats, plot = p)
+    list(data = summary_df, data_folds = folds_df, stats = stats, plot = p)
 }
 
 # Distribution over k-folds of a (species-averaged) metric, one violin per
@@ -1252,28 +1262,28 @@ distribution_plot <- function(
     ref_line <- .set_factor(ref_line, panel_var, panel_order)
 
     # 4. Plot (horizontal violins: score on x, strategies on y)
-    p <- ggplot(fold_df, aes(x = score, y = .data[[strat_var]],
+    p <- ggplot(fold_df, aes(y = score, x = .data[[strat_var]],
                              fill = .data[[strat_var]])) +
         geom_violin(
-            orientation = "y",
+            orientation = "x",
             scale = "width", trim = TRUE, colour = "grey30",
             alpha = 0.7, linewidth = 0.4)
 
     if (show_folds) {
         p <- p + geom_jitter(
-            width = 0, height = 0.12, size = 0.8,
+            width = 0.12, height = 0, size = 0.8,
             alpha = 0.5, colour = "grey20")
     }
 
     p <- p + stat_summary(
-        fun = summary_fun, geom = "point", orientation = "y",
+        fun = summary_fun, geom = "point", orientation = "x",
         shape = 23, size = 2.5, fill = "white", colour = "black")
 
     if (!is.null(ref_line)) {
         p <- p +
-            geom_vline(
+            geom_hline(
                 data = ref_line,
-                aes(xintercept = score, linetype = ref_label),
+                aes(yintercept = score, linetype = ref_label),
                 colour = "black", linewidth = 0.7) +
             scale_linetype_manual(
                 name = NULL,
@@ -1281,19 +1291,19 @@ distribution_plot <- function(
     }
 
     p <- p +
-        .facets(rows = size_var, cols = panel_var, scales = "free_x") +
+        .facets(rows = panel_var, cols = size_var, scales = "free_y") +
         labs(
             title = if (is.null(title)) metric else title,
             subtitle = .direction_note(lower_is_better),
-            x = paste0("Mean ", metric, " per fold"),
-            y = NULL,
+            y = paste0("Mean ", metric, " per fold"),
+            x = NULL,
             caption = .violin_caption(
                 "species-averaged, one value per k_fold", show_folds))
 
     p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
         scale_fill_manual(values = colors, guide = "none") +
         # first strategy at the top: reverse the discrete limits
-        scale_y_discrete(limits = rev(lvls)) +
+        scale_x_discrete(limits = rev(lvls)) +
         theme(
             legend.position = "inside",
             legend.position.inside = c(0.99, 0.01),
@@ -1304,15 +1314,16 @@ distribution_plot <- function(
             legend.key.width = unit(1.5, "lines"),
             legend.background = element_rect(
                 fill = scales::alpha("white", 0.85), colour = "grey70"),
-            legend.margin = margin(2, 4, 2, 4))
+            legend.margin = margin(2, 4, 2, 4),
+            axis.text.x = element_text(angle = 45, hjust = 1))
 
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
     list(data = list(folds = fold_df, reference = ref_line), plot = p)
 }
 
-# Distribution over k-folds of the difference between compared scores and a
-# reference model (vertical violins: difference on y, x_var on x, strat_var as
-# fill).
+# Mean +/- SD over k-folds of the difference between compared scores and a
+# reference model (line plot: difference on y, x_var on x, one line per
+# strat_var level).
 # ARGS:
 #   - ref_scores, compare_scores: data.frames (name, score, k, ...) used to
 #       compute the per-fold differences. Alternatively give `diffs_scores`,
@@ -1320,18 +1331,18 @@ distribution_plot <- function(
 #   - metric: metric name (in column "name").
 #   - title: string (default: the metric).
 #   - x_var / x_order: column drawn on the x-axis (NULL = a single position).
-#   - strat_var / strat_order: column mapped to the fill (was fill_var /
-#       fill_order + color_order). NULL = a single colour.
+#   - strat_var / strat_order: column mapped to the colour (one line per
+#       level). NULL = a single line.
 #   - size_var / size_order, panel_var / panel_order, random_strategy,
-#       show_folds, summary_fun, lower_is_better, save_to: as in
-#       distribution_plot().
+#       summary_fun, lower_is_better, save_to: as in distribution_plot().
 #   - group_species: TRUE = average over species inside each fold; FALSE =
 #       one column of facets per species.
-# RETURNS: 
+# RETURNS:
 #   a list containing
-#       - data: per-fold differences, 
+#       - data: per-fold differences,
+#       - summary: mean (summary_fun) and SD per line point,
 #       - plot: the resulting ggplot
-compare_plot <- function(
+compare_lineplot <- function(
         ref_scores = NULL, compare_scores = NULL, diffs_scores = NULL,
         metric,
         title = NULL, x_var = NULL, x_order = NULL,
@@ -1340,49 +1351,64 @@ compare_plot <- function(
         panel_var = NULL, panel_order = NULL,
         random_strategy = "random-sampling",
         group_species = TRUE,
-        show_folds = TRUE,
         summary_fun = mean,
         lower_is_better = NULL,
         save_to = NULL) {
 
+    if (!is.null(diffs_scores) && !is.null(compare_scores)) {
+        stop("Cannot have diff_scores and compare_scores together")
+    }
+    if (!is.null(ref_scores) && is.null(compare_scores) && is.null(diffs_scores)) {
+        stop("Cannot have ref_scores without compare_scores or diffs_scores")
+    }
+    
     if (group_species) {
-        sp_key <- NULL 
+        sp_key <- NULL
     } else {
         sp_key <- "sp"
     }
+    join_keys <- c("k", panel_var, sp_key)
 
-    if (is.null(diffs_scores)) {
-        join_keys <- c("k", panel_var, sp_key)
-
-        # 1. Reference: mean score per fold (and panel, and species if kept)
+    ref_summary <- NULL
+    if (!is.null(ref_scores)) {
+        # Reference: mean score per fold (and panel, and species if kept)
         ref_summary <- ref_scores |>
             .keep_panels(panel_var, panel_order) |>
             filter(name == metric) |>
             group_by(across(all_of(join_keys))) |>
             summarise(ref_score = mean(score, na.rm = TRUE), .groups = "drop")
-
-        # 2. Compared scores: mean per fold, x, strat, size, panel (and species)
+    }
+    if (!is.null(compare_scores)) {
+        # Compared scores: mean per fold, x, strat, size, panel (and species)
         compare_summary <- compare_scores |>
             .keep_panels(panel_var, panel_order) |>
             filter(name == metric) |>
             group_by(across(all_of(unique(c(join_keys, size_var, x_var, strat_var))))) |>
             summarise(avg_score = mean(score, na.rm = TRUE), .groups = "drop")
 
-        # 3. Per-fold difference with the matching reference
+        # Per-fold difference with the matching reference
         diffs_df <- compare_summary |>
             left_join(ref_summary, by = join_keys) |>
             mutate(diff_score = avg_score - ref_score)
-    } else {
-        diffs_df <- .keep_panels(diffs_scores, panel_var, panel_order)
+    } 
+    if (!is.null(diffs_scores)) {
+        diffs_df <- diffs_scores |>
+            filter(name == metric) |>
+            .keep_panels(panel_var, panel_order)
     }
 
-    # dummy x / strat so the violins still have a discrete position and a fill
+    # dummy x / strat so the lines still have a discrete position and a colour
+    x_is_numeric <- FALSE
     if (is.null(x_var)) {
         diffs_df$.x <- factor("all")
         x_col <- ".x"
     } else {
-        diffs_df <- .set_factor(diffs_df, x_var, x_order)
         x_col <- x_var
+        # numeric, and no explicit order requested -> keep as continuous
+        x_is_numeric <- is.numeric(diffs_df[[x_var]]) && is.null(x_order)
+        if (!x_is_numeric) {
+            diffs_df <- .set_factor(diffs_df, x_var, x_order)
+        }
     }
     if (is.null(strat_var)) {
         diffs_df$.strat <- factor("all")
@@ -1396,100 +1422,131 @@ compare_plot <- function(
     diffs_df <- diffs_df |>
         .set_factor(size_var, size_order) |>
         .set_factor(panel_var, panel_order)
+    
+    # One reference value per facet cell (panel, and species if not grouped)
+    ref_lines <- NULL
+    if (!is.null(ref_summary)) {
+        label_cols <- c(panel_var, sp_key)
+        ref_lines <- ref_summary |>
+            group_by(across(all_of(label_cols))) |>
+            summarise(ref_mean = mean(ref_score, na.rm = TRUE),
+                      .groups = "drop") |>
+            .set_factor(panel_var, panel_order) |>
+            arrange(across(all_of(label_cols)))
+    }
 
     # 4. Caption, with reference means per panel
-    bottom_caption <- .violin_caption(
+    bottom_caption <- paste0(
         if (group_species) {
-            "species-averaged within each fold, one value per k_fold"
+            "species-averaged within each fold"
         } else {
-            "one value per k_fold, per species"
+            "computed per species"
         },
-        show_folds)
+        "; points = mean, bars/ribbon = \u00b1 1 SD across k_folds")
 
-    y_label <- ""
-    if (is.null(diffs_scores)) {
-        ref_means <- ref_summary |>
-            group_by(across(all_of(panel_var))) |>
-            summarise(m = mean(ref_score, na.rm = TRUE), .groups = "drop")
-        if (!is.null(panel_var)) {
-            ref_means <- ref_means |>
-                .set_factor(panel_var, panel_order) |>
-                arrange(across(all_of(panel_var)))
-            ref_text <- paste0(
-                ref_means[[panel_var]], ": ", round(ref_means$m, 3),
-                collapse = ", ")
-            ref_suffix <- paste0(" (", panel_var, ")")
+    y_label <- if (is.null(diffs_scores)) "Delta in average " else ""
+
+    if (!is.null(ref_lines)) {
+        label_cols <- c(panel_var, sp_key)
+        ref_labels <- if (length(label_cols) > 0) {
+            do.call(paste, c(as.list(ref_lines[label_cols]), sep = " / "))
         } else {
-            ref_text <- as.character(round(ref_means$m, 3))
-            ref_suffix <- ""
+            NULL
+        }
+        ref_text <- if (is.null(ref_labels)) {
+            format(round(ref_lines$ref_mean, 3), nsmall = 3)
+        } else {
+            paste0(ref_labels, ": ", round(ref_lines$ref_mean, 3))
         }
         bottom_caption <- paste0(
             bottom_caption,
-            "\nReference mean ", metric, ref_suffix, ": ", ref_text, ".")
-        y_label <- "Delta in average "
+            "\nReference ", metric, " (dashed line",
+            if (length(label_cols) > 0) paste0(", by ", paste(label_cols, collapse = " / ")),
+            "): ", paste(ref_text, collapse = ", "), ".")
     }
 
-    # one summary value per violin
+    # one mean / SD per (x, strat, panel, size, species) across the k folds
     summary_keys <- unique(c(x_col, strat_col, panel_var, size_var, sp_key))
-    violin_summary <- diffs_df |>
+    line_summary <- diffs_df |>
         group_by(across(all_of(summary_keys))) |>
-        summarise(m = summary_fun(diff_score, na.rm = TRUE), .groups = "drop")
+        summarise(
+            m = summary_fun(diff_score, na.rm = TRUE),
+            s = sd(diff_score, na.rm = TRUE),
+            .groups = "drop") |>
+        mutate(ymin = m - s, ymax = m + s)
 
     # 5. Colours: tied to values, grey for the random strategy
     lvls_now <- levels(diffs_df[[strat_col]])
-    fill_colors <- .strategy_colours(lvls_now, random_strategy, random_colour = "grey70")
+    line_colors <- .strategy_colours(lvls_now, random_strategy, random_colour = "grey50")
 
     # 6. Plot
-    dodge <- position_dodge(width = 0.75)
+    dodge_width <- if (x_is_numeric) {
+        xs <- sort(unique(line_summary[[x_col]]))
+        if (length(xs) > 1) min(diff(xs)) * 0.3 else 0.3
+    } else {
+        0.3
+    }
+    dodge <- position_dodge(width = dodge_width)
+    eb_width <- if (x_is_numeric) dodge_width * 0.6 else 0.2
 
     p <- ggplot(
-            diffs_df,
-            aes(y = diff_score, x = .data[[x_col]], fill = .data[[strat_col]])) +
-        geom_violin(
-            position = dodge, width = 0.6,
-            scale = "width", trim = TRUE,
-            colour = "grey30", alpha = 0.7, linewidth = 0.4)
-
-    if (show_folds) {
-        p <- p + geom_point(
-            position = position_jitterdodge(jitter.width = 0.12, dodge.width = 0.75),
-            size = 0.8, alpha = 0.5, colour = "grey20", show.legend = FALSE)
-    }
+            line_summary,
+            aes(x = .data[[x_col]], y = m,
+                colour = .data[[strat_col]], fill = .data[[strat_col]],
+                group = .data[[strat_col]]))
 
     p <- p +
-        geom_point(
-            data = violin_summary,
-            aes(x = .data[[x_col]], y = m, group = .data[[strat_col]]),
-            inherit.aes = FALSE, position = dodge,
-            shape = 23, size = 2.5, fill = "white", colour = "black") +
-        geom_hline(yintercept = 0, linetype = "dashed") +
-        labs(
-            title = if (is.null(title)) metric else title,
-            subtitle = .direction_note(lower_is_better),
-            caption = bottom_caption,
-            fill = if (is.null(strat_var)) NULL else .pretty_label(strat_var),
-            x = if (is.null(x_var)) NULL else .pretty_label(x_var),
-            y = paste0(y_label, metric))
+        geom_line(position = dodge, linewidth = 0.8) +
+        geom_errorbar(
+            aes(ymin = ymin, ymax = ymax),
+            position = dodge, width = eb_width, linewidth = 0.5) +
+        geom_point(position = dodge, size = 2)
+    
+    if (!is.null(ref_lines)) {
+        if (!is.null(diffs_scores)) {
+            p <- p + geom_hline(
+                data = ref_lines, aes(yintercept = ref_mean),
+                linetype = "dashed", colour = "black", inherit.aes = FALSE)
+        } else {
+            p <- p + geom_hline(yintercept = 0, linetype = "dashed")
+        }
+    }
+        
+    p <- p + labs(
+        title = if (is.null(title)) metric else title,
+        subtitle = .direction_note(lower_is_better),
+        caption = bottom_caption,
+        colour = if (is.null(strat_var)) NULL else .pretty_label(strat_var),
+        fill = if (is.null(strat_var)) NULL else .pretty_label(strat_var),
+        x = if (is.null(x_var)) NULL else .pretty_label(x_var),
+        y = paste0(y_label, metric))
 
     # faceting: rows = size (and panel if species take the columns)
     p <- p + if (group_species) {
-        .facets(rows = size_var, cols = panel_var, scales = "free_y")
+        .facets(cols = panel_var, scales = "free_y")
     } else {
-        .facets(rows = c(panel_var, size_var), cols = "sp", scales = "free_y")
+        .facets(cols = panel_var, rows = "sp", scales = "free_y")
     }
 
+    guide_type <- if (is.null(strat_var)) "none" else "legend"
     p <- my_custom_ggplot_theme(p, with_palette = FALSE) +
-        scale_fill_manual(
-            values = fill_colors,
-            guide = if (is.null(strat_var)) "none" else "legend")
+        scale_colour_manual(values = line_colors, guide = guide_type) +
+        scale_fill_manual(values = line_colors, guide = "none")
 
     if (is.null(x_var)) {
         p <- p + theme(axis.text.x = element_blank(),
-                       axis.ticks.x = element_blank())
+                    axis.ticks.x = element_blank())
+    } else if (x_is_numeric) {
+        p <- p + scale_x_continuous(
+            breaks = sort(unique(line_summary[[x_col]])))
     } else {
         p <- p + scale_x_discrete(labels = abbreviate_labels)
     }
 
     if (!is.null(save_to)) standardised_ggplot_save(p, save_to)
-    list(data = diffs_df, plot = p)
+    list(
+        data = diffs_df, 
+        ref_data = ref_lines,
+        summary = line_summary, 
+        plot = p)
 }

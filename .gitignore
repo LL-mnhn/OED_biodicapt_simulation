@@ -23,7 +23,6 @@ data/preprocessed_data/*
 
 # Outputs results - only show 1st k-fold remove others manually
 outputs/results/model*
-!outputs/results/model_*_k1
 MeSU_outputs/
 
 # Renv - can be rebuilt from renv.lock

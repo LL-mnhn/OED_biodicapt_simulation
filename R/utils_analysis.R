@@ -275,7 +275,7 @@ explore_dataset <- function(
 #   - pca: the PCA result values
 #   - p_ind: the PCA plot showing individual observations in 2D
 #   - p_var: the contribution plot for all variables, to each axis in 2D
-make_pca_and_plots <- function(df, color_var = NULL) {
+make_pca_and_plots <- function(df, color_var = NULL, max_points = 50000) {
     # Make sure df is a dataframe
     if (inherits(df, "SpatVector")) {
         df <- as.data.frame(df)
@@ -289,25 +289,57 @@ make_pca_and_plots <- function(df, color_var = NULL) {
     # Keep only numeric columns for PCA
     df_num <- df_clean |> select(where(is.numeric))
 
-    # compute PCA (always standardize data)
+    # compute PCA on ALL the data (always standardize)
     pca_res <- dudi.pca(
         df_num, center = TRUE, scale = TRUE, scannf = FALSE, nf = 5)
 
-    # Individuals plot (samples), colored by a grouping variable if provided
-    p_ind <- fviz_pca_ind(
-            pca_res,
-            geom.ind = "point",
-            col.ind = if (!is.null(color_var)) df_clean[[color_var]] else "grey20",
-            alpha.ind = 0.4,
-            palette = "jco",
-            addEllipses = !is.null(color_var),
-            legend.title = color_var %||% "Group",
-            repel = TRUE) +
+    # Subsample individuals for plotting only 
+    n <- nrow(df_clean)
+    if (n > max_points) {
+        idx <- sample.int(n, max_points)
+    } else {
+        idx <- seq_len(n)
+    }
+
+    # Axis labels with % of variance explained
+    pct <- round(100 * pca_res$eig / sum(pca_res$eig), 1)
+
+    plot_df <- data.frame(
+        PC1 = pca_res$li[idx, 1],
+        PC2 = pca_res$li[idx, 2]
+    )
+    if (!is.null(color_var)) {
+        plot_df$group <- df_clean[[color_var]][idx]
+    }
+
+    # Individuals plot
+    if (!is.null(color_var)) {
+        p_ind <- ggplot(plot_df, aes(PC1, PC2, color = group)) +
+            geom_point(alpha = 0.4) +
+            stat_ellipse(aes(fill = group), geom = "polygon",
+                         alpha = 0.1, show.legend = FALSE) +
+            scale_color_manual(values = get_palette("jco", length(unique(plot_df$group)))) +
+            scale_fill_manual(values = get_palette("jco", length(unique(plot_df$group)))) +
+            labs(color = color_var)
+    } else {
+        p_ind <- ggplot(plot_df, aes(PC1, PC2)) +
+            geom_point(alpha = 0.4, color = "grey20")
+    }
+
+    p_ind <- p_ind +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "grey60") +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "grey60") +
         theme_minimal(base_size = 13) +
-        labs(title = "PCA - Individuals")
+        labs(
+            title = sprintf("PCA - Individuals (%s of %s points shown)",
+                            format(length(idx), big.mark = ","),
+                            format(n, big.mark = ",")),
+            x = sprintf("PC1 (%s%%)", pct[1]),
+            y = sprintf("PC2 (%s%%)", pct[2])
+        )
     p_ind <- my_custom_ggplot_theme(p_ind)
 
-    # Variables plot (loadings / contributions)
+    # Variables plot (loadings / contributions) - unaffected by sample size
     p_var <- fviz_pca_var(
             pca_res,
             col.var = "contrib",
