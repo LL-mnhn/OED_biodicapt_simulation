@@ -28,10 +28,7 @@ if (file.exists(file.path("data", "config", "seed.R"))) {
 ##### Local functions ##### ---------------------------------------------------
 check_raster_standardised_raster_projection <- function(
         raster_path, save_to_basename) {
-    if (!authorise_overwrite(save_to_basename)) {
-        # Check if file exists
-        cli_alert_warning("Skipping STOC pre-processing.\n\n")
-    } else {
+    if (authorise_overwrite(save_to_basename)) {
         raster_standardised_raster_projection(
             raster_path = raster_path,
             save_to_basename = save_to_basename)
@@ -80,7 +77,7 @@ preprocess_stoc_dataset <- function(
 
         # remove useless columns      
         stoc_subset <- stoc_subset |> select(-any_of(cols_to_remove))
-          
+
         # No blurring necessary (this is a public dataset)
         # Save resulting dataframe
         cli_alert_info("Saving file...")
@@ -255,13 +252,22 @@ show_save_results <- function() {
     biodicapt_df <- vect(BIODICAPT_OBS_FULL)
     cli_alert_warning(paste("Biodicapt dataset: sampling locations"))
 
+    # Add cluster column, based on names
+    biodicapt_df$cluster <- sub(
+        "^[^_]+_([^_]+)_.*$", "\\1", 
+        biodicapt_df$biodicapt_id)
+
     biodicapt_plot <- ggplot_categorical_df_on_background_map(
         background_map = ggplot_get_france_base_map("regional"), 
         df = as.data.frame(biodicapt_df), 
         lon_c = "lon",
         lat_c = "lat",
-        col = PALETTE[1],
+        column = "cluster",
         legend_title = "Sampling locations of BIODICAPT")
+    biodicapt_plot <- my_custom_ggplot_theme(
+        biodicapt_plot, with_palette = TRUE, light = TRUE, is_map = TRUE) + 
+        scale_color_manual(values = rep(PALETTE[1], 6)) +
+        scale_fill_manual(values = rep(PALETTE[1], 6))
     print(biodicapt_plot)
     standardised_ggplot_save(
         figure = biodicapt_plot, 
@@ -323,6 +329,28 @@ import_eni500_csv <- function(
 
     # Rename coordinates columns
     eni500_df <- eni500_df |> rename(LON = X, LAT = Y)
+
+    ### remove points outside of France's continental area
+    # Get buffered vector of France's continental area
+    france_sf <- get_metropolitan_france_shapefile()
+    france_sf_buffered <- france_sf |>
+        st_transform(PROJECT_CRS) |>    
+        st_buffer(dist = BUFFER_SIZE) |> # buffer distance in meters
+        st_transform("EPSG:4326")        # transform to match STOC's crs
+
+    # Keep only the points inside the mask
+    pts <- vect(
+        eni500_df,
+        geom = c("LON", "LAT"),
+        crs  = "EPSG:4326",
+        keepgeom = TRUE)
+    inside <- relate(
+        pts, vect(france_sf_buffered), 
+        relation = "intersects", pairs = FALSE)
+    # one row per point, one column per polygon -> collapse over polygons
+    inside <- rowSums(inside) > 0
+    eni500_df <- eni500_df[inside, ]
+
     cli_alert_success("Dataset is ready!\n\n")
 
     return(eni500_df)
@@ -351,7 +379,7 @@ if (exists("BLUR_SEED")) {
             folder_path = CHELSA_DATASETS_PATHS[i],
             save_to = CHELSA_PATHS_PREPROCESSED[i])
         . <- check_raster_standardised_raster_projection(
-            raster_path = CHELSA_PREPROCESSED_PATHS[i],
+            raster_path = CHELSA_PATHS_PREPROCESSED[i],
             save_to_basename = CHELSA_PROJECTION_BASEPATHS[i])
     }
 

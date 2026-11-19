@@ -379,12 +379,15 @@ standardised_ggplot_save(
     wrap_plots(plots), 
     file.path(EXPLORE_PATH, "env_raster_layers_vtransform.pdf"), 
     .width = 36, .height = 12)
-print(wrap_plots(plots))
+# print(wrap_plots(plots))
 
 
 ##### Computing PCA (for `virtualspecies`) ##### ------------------------------
 ### Compute PCA on raster
-t_env_df <- as.data.frame(t_envs_raster)
+t_env_df <- as.data.frame(clip_raster_to_france_shape(
+        t_envs_raster,  
+        buffer = 0, 
+        fill_missing = FALSE))
 result_pca <- make_pca_and_plots(t_env_df)
 margin_pca <- ggMarginal(result_pca$plot_ind, type = "density")
 print(margin_pca)
@@ -418,7 +421,8 @@ standardised_ggplot_save(densities_plot,
 
 ### Plot observed rank-occurence curve 
 # (proxy to rank-abundance for presence/absence data)
-rank_occurence_plot <- rank_occurence_curves(t_stoc_df, fix_names(NAMES_SPECIES))
+rank_occurence_plot <- rank_occurence_curves(
+    t_stoc_df, fix_names(NAMES_SPECIES))
 standardised_ggplot_save(
     rank_occurence_plot$roc_plot, 
     file.path(EXPLORE_PATH, "rank-occurence_stoc.pdf"))

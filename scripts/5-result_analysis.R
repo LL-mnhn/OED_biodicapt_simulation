@@ -36,7 +36,7 @@ if (authorise_overwrite(ANALYSES_PATH)) {
 EFFECTS <- readRDS(file.path(RESULTS_PATH, "effects.rds"))
 REFERENCE_EFFECTS <- EFFECTS[1][[1]]
 ORDER_STRATS <- c(
-    "none", "random-sampling", "gap-filling", "max-uncertainty", 
+    "none", "random-sampling", "by-region", "gap-filling", "max-uncertainty", 
     "ds-optimality", "i-optimality")
 
 # FIX Random effect (we are not interested in its effect on predictions)
@@ -636,6 +636,7 @@ all_datasets <- unwrap_simulations(
     readRDS(file = file.path(RESULTS_PATH, "datasets.rds")))
 show_map_selected_new_pool(
     complete_new_pool = all_datasets[[1]]$new_pool,
-    keep_strats = c("max-uncertainty", "ds-optimality", "i-optimality"),
+    keep_strats = c(
+        "by-region", "max-uncertainty", "ds-optimality", "i-optimality"),
     keep_sizes = c(10, 50, 150),
     save_to = file.path(ANALYSES_PATH, "freq-new-locations.pdf"))

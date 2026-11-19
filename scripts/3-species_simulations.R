@@ -74,8 +74,7 @@ plot_virtualspecies_rasters <- function() {
 ##### Load datasets ##### -----------------------------------------------------
 cli_alert_info("Loading datasets...")
 # environmental data for virtual species (downsampled version)
-envs_t_raster_subres <- get_master_t_rasters(
-    mode = "res", keep.lyr = X_VARIABLES)
+envs_t_raster_subres <- get_master_t_rasters(mode = "res", keep.lyr = X_VARIABLES)
 
 # species + environmental dataset (a sort of biased "ground truth")
 stoc_df <- fix_names(vect(STOC_OBS_TRF))
@@ -100,7 +99,8 @@ simulations <- simulate_from_PCA(
     precomputed_pca = env_pca, 
     sites = stoc_df,
     n_sp = length(NAMES_SPECIES), 
-    prevalences = stoc_occurences$freq_occurrence)
+    prevalences = stoc_occurences$freq_occurrence,
+    tp = PROBABILITY_TP, fp = PROBABILITY_FP)
 
 # Saving dont forget to wrap any SpatRaster objects inside the list)
 saveRDS(

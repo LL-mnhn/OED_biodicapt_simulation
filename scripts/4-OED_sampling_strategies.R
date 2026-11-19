@@ -40,24 +40,17 @@ NCHAINS <- 3
 EFFECTS <- list(
     # Reference effects (ALWAYS the first element)
     list(
-        R_EFFECTS = c("none"), 
-        NEW_SAMPLE_SIZES = c(0),
-        STRATEGIES = c("none")
-    ),
-    # Reference effects (ALWAYS the first element)
-    list(
         R_EFFECTS = c("site"), 
         NEW_SAMPLE_SIZES = c(0),
         STRATEGIES = c("none")
     ),
     # Add new samples according to different strategies
     list(
-        R_EFFECTS = c("none", "site"), 
+        R_EFFECTS = c("site"), 
         NEW_SAMPLE_SIZES = c(10, 25, 50, 100, 150),
         STRATEGIES = c(
-            "random-sampling", "gap-filling", "max-uncertainty", 
-            "2-part-max-uncertainty", "5-part-max-uncertainty",
-            "10-part-max-uncertainty", "ds-optimality", "i-optimality")
+            "random-sampling", "by-region", "gap-filling", 
+            "max-uncertainty", "ds-optimality", "i-optimality")
     )
 )
 REFERENCE_EFFECTS <- EFFECTS[1][[1]] # Always the first element (isolate it)
@@ -114,7 +107,7 @@ prepare_datasets <- function() {
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
             mutate(row_id = paste0("id_biodicapt_", 1:nrow(biodicapt_vec)))
         all_datasets[[k]]$new_pool <- eni500_vec |>
-            select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
+            select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "region", "lon", "lat"))) |>
             mutate(row_id = paste0("id_eni500_", 1:nrow(eni500_vec)))
         all_datasets[[k]]$test <- stoc_vec |>
             select(all_of(c(X_VARIABLES, NAME_SP_SIMUL, "lon", "lat"))) |>
@@ -123,14 +116,7 @@ prepare_datasets <- function() {
         if( (sum(is.na(as.data.frame(all_datasets[[k]]$train))) + 
             sum(is.na(as.data.frame(all_datasets[[k]]$new_pool))) + 
             sum(is.na(as.data.frame(all_datasets[[k]]$test)))) > 0) {
-            stop(paste0("[Security]: NAs detected in observations."))
-            
-            # problems in new_pool
-            plot(pa_obs[[1]]$sp_1 < 2)
-
-            selection <- which(is.na(all_datasets[[k]]$test$mean_tii))
-            sel_points <- all_datasets[[k]]$test[selection, ]
-            points(sel_points, col = "red", pch =16, cex=1.5)
+            stop(paste0("[Stopping process]: NAs detected in observations."))
         }
     }
 
@@ -181,6 +167,34 @@ extended_training_design <- function(
             random_seed, sample.int(nrow(candidates)))[seq_len(new_sample_size)]
         extended_set <- bind_rows(base_subset, candidates[idx_random, ])
         
+    } else if (strat == "by-region") {
+        # By region: 
+        #   - pick a region
+        #   - pick points at random inside it
+        #   - when all points are selected, pick a new region
+        #   - repeat
+        idx_candidates <- c()
+        for (region_name in ORDER_REGIONS) {
+            if (length(idx_candidates) < new_sample_size) {
+                regional_subset <- extension_subset |> 
+                    filter(region == region_name)
+
+                # select a random number of ids
+                select_n_rows <- min(
+                    nrow(regional_subset), 
+                    new_sample_size - length(idx_candidates))
+                idx_candidates <- c(
+                    idx_candidates, 
+                    withr::with_seed(
+                        random_seed, 
+                        sample(regional_subset$row_id))[seq_len(select_n_rows)]
+                )
+            }
+        }
+        extended_set <- bind_rows(
+            base_subset, 
+            extension_subset |> filter(row_id %in% idx_candidates))
+
     } else if (strat == "gap-filling") {
         # Gap-filling: select points that are the farthest from current design
         cli_alert_info(paste0("Searching for the most distant points..."))
@@ -312,8 +326,9 @@ optimise_model_training <- function(
         nchar(strategy))
     n_new_samples_per_part <- split_evenly(params$NEW_SAMPLE_SIZES, n_parts)
     
-    if (tolower(strategy_alone) %in% 
-            c("max-uncertainty", "ds-optimality", "i-optimality")) {
+    if (    tolower(strategy_alone) %in% 
+            c("max-uncertainty", "ds-optimality", "i-optimality")
+    ) {
         # these strategies need an initial model to compute uncertainty / 
         # information on. For that, we can use the BASE_MODEL, fitted with the 
         # same random effects as the current run.

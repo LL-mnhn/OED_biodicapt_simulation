@@ -16,10 +16,10 @@ REMOTE_USERNAME <- "lehnhofl"
 OBS_YEAR <- "2018"  # Most recent year for CLC dataset
 RES_KM <- 5         # best compromise I think
 # Map limits for figures (France limits with buffer, in PROJECT_CRS)
-LON_MIN <- 3150000
-LON_MAX <- 4350000
-LAT_MIN <- 1950000
-LAT_MAX <- 3200000
+LON_MIN <- 3200000
+LON_MAX <- 4300000
+LAT_MIN <- 2050000
+LAT_MAX <- 3150000
 
 PROJECT_CRS <- "EPSG:3035"  # Must be a metric projection (either 3035 or 2154)
 PROJECT_CRS_TAG  <- gsub(":", "", PROJECT_CRS)   # for file names
@@ -206,15 +206,23 @@ NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
 ### Simulations and Models ----------------------------------------------------
 K_FOLDS <- 10
-PROBABILITY_TP <- 0.95 # detection rate : True Positives detected
-PROBABILITY_FP <- 0.05 # error rate : False positives detected
+PROBABILITY_TP <- 0.95 # True Positives rate (detection rate)
+PROBABILITY_FP <- 0.01 # False Positives rate (error rate) cannot be less than min(prevalence)
+
+# REGIONS: arbitrary ordered for the "regional" strategy
+ORDER_REGIONS <- c(
+    "NORMANDIE", "GRAND-EST", "OCCITANIE", "HAUTS-DE-FRANCE", 
+    "BOURGOGNE-FRANCHE-COMTE", "NOUVELLE-AQUITAINE", "CENTRE-VAL DE LOIRE",
+    "PROVENCE-ALPES-COTE D'AZUR", "BRETAGNE", "ILE-DE-FRANCE",
+    "AUVERGNE-RHONE-ALPES", "PAYS DE LOIRE"   
+)                  
 
 # FYI: 
 #   - "clc" is removed because it is a categorical variable
 #   - "distance to NODATA" is removed, not informative
 # Variables that are commented out are removed because they are correlated with
 # other variables (based on spearman correlation on BIODICAPT + 500ENI dataset,
-# abs(corr)> 0.7 were discarded by default, lower values were discarded based 
+# abs(corr)> 0.75 were discarded by default, lower values were discarded based 
 # on a manual case by case review)
 X_VARIABLES <- c(
     "chelsa.tas.annual",
@@ -227,7 +235,7 @@ X_VARIABLES <- c(
     "pesticides", # mean_tii
 
     "distance.to.artificial.surfaces",
-    # "distance.to.forest.and.semi.natural.areas",
+    # "distance.to.forest.and.semi.natural.areas", 
     "distance.to.wetlands", 
     # "distance.to.water.bodies",
     # "distance.to.arable.land",
@@ -239,8 +247,8 @@ X_VARIABLES <- c(
     "prop.forest.and.semi.natural.areas.within.7071m",
     "prop.wetlands.within.7071m", 
     "prop.water.bodies.within.7071m",
-    # "prop.arable.land.within.7071m", 
-    "prop.permanent.crops.within.7071m",
+    "prop.arable.land.within.7071m",
+    # "prop.permanent.crops.within.7071m",
     "prop.pastures.within.7071m",
     "prop.heterogeneous.agricultural.areas.within.7071m"
 )
@@ -255,27 +263,27 @@ X_UNITS <- list(
     "eTII",
     
     "m", 
-    # "m", 
+    # "m",
     "m", 
-    # "m", 
-    # "m", 
-    # "m", 
-    # "m", 
+    # "m",
+    # "m",
+    # "m",
+    # "m",
     # "m",
 
-    # "%", 
+    # "%",
     "%", 
     "%",
     "%", 
+    "%",
     # "%", 
-    "%", 
     "%", 
     "%"
 )
 
 # Parameters of interest for Ds-optimality 
 # (other parameters are considered as noise)
-ACTIONABLE_VARIABLES <- c("light.pollution", "swf") 
+ACTIONABLE_VARIABLES <- c("light.pollution", "pesticides") 
 
                        
 ### Plot styling --------------------------------------------------------------
@@ -286,7 +294,7 @@ PALETTE <- c("#D9054E", "#28A349", "#246CBC",
              "#890f40")
 
 SHAPES <- c(21, 22, 23, 24, 25, 8, 13, 7)
-SIZES <- c(1.66, 1.85, 1.66, 1.5, 1.5, 1, 1, 1)
+SIZES <- c(1.66, 1.85, 1.66, 1.5, 1.5, 1.25, 1.25, 1.25)
 STROKES <- c(0, 0, 0, 0, 0, 0.5, 0.5, 0.5)
 CUSTOM_SCALES <- list(
     scale_color_manual(values = darken(PALETTE, amount = 0.66)),

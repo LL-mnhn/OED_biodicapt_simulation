@@ -399,40 +399,32 @@ ggplot_categorical_df_on_background_map <- function(
     data <- slice_sample(data, prop = 1)
     
     if (!is.null(column)) {
-        uniques_vals <- unique(data[[column]])
-        if (length(uniques_vals) > length(palette)){
-            stop(paste(c(
-                "Given palette can handle up to ", length(palette), 
-                " unique values. Found ", length(uniques_vals),
-                " in column '", column,"'."
-            )))
-        } else {
-            # make plot
-            map_obs <- suppressMessages(background_map +
-                geom_sf(
-                    data = data,
-                    stroke = 0.8,
-                    aes(
-                        color = .data[[column]],
-                        fill = .data[[column]],
-                        shape = .data[[column]],
-                        size = .data[[column]],
-                    )
-                ) +
-                labs(
-                    x = "longitude",
-                    y = "latitude",
-                    color = legend_title,
-                    fill = legend_title,
-                    shape = legend_title,
-                    size = legend_title
-                ) +
-                coord_sf(
-                    crs = PROJECT_CRS,              # CRS the map is drawn in
-                    xlim = c(lon_min, lon_max),
-                    ylim = c(lat_min, lat_max))
-            )
-        }
+        # uniques_vals <- unique(data[[column]])
+        # make plot
+        map_obs <- suppressMessages(background_map +
+            geom_sf(
+                data = data,
+                stroke = 0.8,
+                aes(
+                    color = .data[[column]],
+                    fill = .data[[column]],
+                    shape = .data[[column]],
+                    size = .data[[column]],
+                )
+            ) +
+            labs(
+                x = "longitude",
+                y = "latitude",
+                color = legend_title,
+                fill = legend_title,
+                shape = legend_title,
+                size = legend_title
+            ) +
+            coord_sf(
+                crs = PROJECT_CRS,              # CRS the map is drawn in
+                xlim = c(lon_min, lon_max),
+                ylim = c(lat_min, lat_max))
+        )
         return(my_custom_ggplot_theme(
             map_obs, with_palette = TRUE, is_map = TRUE))
         
@@ -482,7 +474,7 @@ ggplot_quantitative_raster_on_background_map <- function(
         raster,
         layer_name = 1,
         unit = "°C",
-        transform_scale = "sqrt",
+        transform_scale = "identity",
         limits = NULL,
         cols = CUSTOM_CMAP,
         precision_auto_limits = 1e-5,
@@ -567,7 +559,7 @@ ggplot_quantitative_shapefile_on_background_map <- function(
         shapefile,
         layer_name,
         unit = "°C",
-        transform_scale = "sqrt",
+        transform_scale = "identity",
         limits = NULL,
         cols = CUSTOM_CMAP,
         precision_auto_limits = 1e-5
@@ -636,7 +628,7 @@ ggplot_quantitative_df_on_background_map <- function(
         limits = NULL,
         precision_auto_limits = 1e-5,
         cols = CUSTOM_POINT_CMAP,
-        transform_scale = "sqrt",
+        transform_scale = "identity",
         col = PALETTE[1], size = SIZES[1], shape = SHAPES[1], stroke = STROKES[1],
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX) {
@@ -648,7 +640,7 @@ ggplot_quantitative_df_on_background_map <- function(
         all(as.data.frame(df[lat_c]) <= FRANCE_BBOX_4326["ymax"])    
     )) {
         stop(paste0(
-            "ggplot_categorical_df_on_background_map() assumes that your data ",
+            "ggplot_quantitative_df_on_background_map() assumes that your data ",
             "is in EPSG:4326 over France's extent. It looks like 'df' is in ",
             "another CRS, or on a different area. Please check your data."
         ))

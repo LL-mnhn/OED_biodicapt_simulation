@@ -197,7 +197,8 @@ explore_dataset <- function(
                 get_assoc_matrix(df[x_cols], columns = x_cols), 
                 lab = TRUE, 
                 type = "lower", 
-                colors = c("#5793cf", "white", "#EE6677"))
+                colors = c("#5793cf", "white", "#EE6677")) +
+            labs(title = save_name)
         corr_plot <- my_custom_ggplot_theme(corr_plot, with_palette = FALSE) + 
             theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
         suppressMessages(print(corr_plot))

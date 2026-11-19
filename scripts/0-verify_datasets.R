@@ -2,6 +2,7 @@
 # in ./data/raw_data
 
 ##### Libraries ##### ---------------------------------------------------------
+library(sf)
 library(cli)
 library(terra)
 library(elevatr)
@@ -120,7 +121,7 @@ check_chelsa_rasters <- function() {
             filename <- paste0(
                 "CHELSA_", chelsa_dataset, 
                 "_", sprintf("%02d", month),
-                "_", OBS_YEAR, ".tif")
+                "_", OBS_YEAR, "_V.2.1.tif")
             filepath <- file.path(CHELSA_FOLDER, chelsa_dataset, filename)
             if (!file.exists(filepath)) {
                 stop("Missing CHELSA-monthly file, download them at https://www.chelsa-climate.org/.")

@@ -91,17 +91,19 @@ customSampleOccurrences <- function(
 #   - alpha: a numeric, defines the slope of the logistic curve.
 #   - detection: a numeric value between 0 and 1 corresponding to the 
 #       probability of detection of the species.
+#   - tp: a numeric. detection rate : True Positives detected
+#   - fp: a numeric. error rate : False positives detected
 # RETURNS:
 #   - a vector of observations/detections (contains values of 0/NA or 1)
 calibrate_beta_to_sites <- function(
-        suit_rast, 
-        sites, 
-        target,
-        alpha = -0.05, 
-        detection = 1) {
+        suit_rast, sites, target,
+        alpha = -0.05, detection = 1, tp = 1, fp = 0) {
     s <- terra::extract(suit_rast, sites)[, 2]
     s <- s[!is.na(s)]
-    f <- function(beta) mean(1 / (1 + exp((s - beta) / alpha))) * detection - target
+    f <- function(beta) {
+        p <- mean(1 / (1 + exp((s - beta) / alpha)))
+        p * tp + (1 - p) * fp - target
+    }
     uniroot(f, interval = c(-1, 2))$root
 }
 
@@ -117,12 +119,15 @@ calibrate_beta_to_sites <- function(
 #   - prevalences: a set of values between 0 and 1. The target frequency of 
 #       occurence for each generated species. 
 #       Must have length(prevalences) = n_sp.
+#   - tp: a numeric. detection rate : True Positives detected
+#   - fp: a numeric. error rate : False positives detected
 # RETURNS: a list
 #   - sp_params: means and sds for the ellipsoids of each species
 #   - k_sp_obs: 
 simulate_from_PCA <- function(
         raster_stack, precomputed_pca, n_sp, prevalences, sites = NULL,
-        k_folds = K_FOLDS, max_draws = 99, min_suit = 0.25, seed = 42) {
+        k_folds = K_FOLDS, max_draws = 99, min_suit = 0.25, seed = 42,
+        tp = 1, fp = 0) {
     # Global parameter
     alpha = -0.05
     
@@ -206,7 +211,9 @@ simulate_from_PCA <- function(
                             suit_rast = suitability$suitab.raster, 
                             sites = sites, 
                             target = target,
-                            alpha = alpha),
+                            alpha = alpha,
+                            tp = tp, 
+                            fp = fp),
                         error = function(e) NA)
                     accepted <- !is.na(beta)
                 }

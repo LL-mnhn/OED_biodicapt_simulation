@@ -61,7 +61,7 @@ authorise_overwrite <- function(
     } else if (dir.exists(path) && (length(list.files(path, all.files = TRUE, no.. = TRUE)) == 0)) {
         # is an empty folder (then no worries, we overwrite nothing)
         return(TRUE)
-    }else { 
+    } else { 
         # if file exist, ask user for what needs to be done
         user_input <- typeline(
             prompt = paste0(" Overwrite `", path, "`? [Y/n]: "),
@@ -257,7 +257,8 @@ blur_coordinates <- function(df, x_lon, y_lat, blur_km, seed = NULL) {
     return(fix_names(df))
 }
 
-# A function that imports a shapefile of france's borders
+# A function that imports a shapefile of france's borders (metropolitan area,
+# excluding corsica)
 # ARGS:
 #   - borders: a string. Either "national" (default) or "regional". 
 #       If "regional", draws highest level inner borders ofthe country.
@@ -266,26 +267,34 @@ blur_coordinates <- function(df, x_lon, y_lat, blur_km, seed = NULL) {
 # WARNING:
 #   - Hard coded extent values exclude all* overseas territories (*but corsica).
 get_metropolitan_france_shapefile <- function(borders = "national") {
-    # import from different functions depending on borders
-    if (borders == "regional"){
+    if (borders == "regional") {
         france_sf <- ne_states(country = "France", returnclass = "sf")
-        
+        france_sf <- st_set_agr(france_sf, "constant")
+
+        # Filter rows by centroid location
+        cent <- suppressWarnings(st_coordinates(st_centroid(st_geometry(france_sf))))
+        in_europe <- cent[, 1] > -6 & cent[, 1] < 10 &
+                     cent[, 2] > 41 & cent[, 2] < 52
+        in_corsica <- cent[, 1] > 8 & cent[, 2] < 43.5
+
+        france_mainland <- france_sf[in_europe & !in_corsica, ]
+
     } else if (borders == "national") {
         france_sf <- ne_countries(
-            country = "France", scale = "large", returnclass = "sf")    
-        
+            country = "France", scale = "large", returnclass = "sf")
+        france_sf <- st_set_agr(france_sf, "constant")
+
+        # Split into one row per polygon, then keep the one containing Paris
+        france_poly <- st_cast(france_sf, "POLYGON")
+        paris <- st_sfc(st_point(c(2.35, 48.85)), crs = st_crs(france_sf))
+        france_mainland <- france_poly[
+            lengths(st_intersects(france_poly, paris)) > 0, ]
+
     } else {
         stop(paste0(borders, " is not recognised (should be one of 'regional' or 'national')"))
     }
-    
-    # Use hard coded extent of france to exclude overseas territories from shp
-    france_sf <- st_set_agr(france_sf, "constant")
-    st_crop(
-        france_sf, 
-        xmin = -5.5, 
-        xmax = 9.7, 
-        ymin = 41.2, 
-        ymax = 51.2)
+
+    return(france_mainland)
 }
 
 # A function that clips the values of a raster outside of an overlapping 
@@ -1747,7 +1756,7 @@ save_simplified_clc <- function(raster_path, save_to) {
     } else {
         cli_alert_info("Loading raster...")
         raster <- rast(raster_path)
-        if (check_crs(rast(CORINE_FILEPATH), PROJECT_CRS)) {
+        if (!check_crs(raster, PROJECT_CRS)) {
             stop(paste0("Loaded raster is not in crs ", PROJECT_CRS))
         }
 
