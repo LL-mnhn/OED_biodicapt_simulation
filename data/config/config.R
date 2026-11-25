@@ -205,7 +205,7 @@ NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
 
 ### Simulations and Models ----------------------------------------------------
-K_FOLDS <- 1
+K_FOLDS <- 10
 PROBABILITY_TP <- 0.95 # True Positives rate (detection rate)
 PROBABILITY_FP <- 0.01 # False Positives rate (error rate) cannot be less than min(prevalence)
 
