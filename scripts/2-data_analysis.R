@@ -395,7 +395,7 @@ print(result_pca$plot_var)
 standardised_ggplot_save(
     margin_pca, 
     file.path(EXPLORE_PATH, "pca_on_t_rasters.pdf"))
-saveRDS(result_pca$pca, file = file.path(EXPLORE_PATH, "pca_data.rds"))
+saveRDS(result_pca, file = file.path(EXPLORE_PATH, "pca_data.rds"))
 
 ### Visualise real-world sigthings on PCA
 cli_alert_info("Analysis of sightings...")

@@ -385,6 +385,17 @@ scores_df <- scores_df |>
         "I" = "I criterion (realised)",
         "Ds_expected" = "Ds criterion (expected)",
         "I_expected" = "I criterion (expected)"))
+# Add gain in MSE per number of added samples
+scores_df <- scores_df |>
+    bind_rows(
+        scores_df |>
+            filter(name == "MSE") |>
+            mutate(
+                name = "MSE per sample", 
+                score = score/NEW_SAMPLE_SIZES,
+                score = if_else(is.infinite(score), 0, score)
+            )
+        )
 
 # Partition reference effects vs other effects
 ref_df <- scores_df |>
@@ -561,6 +572,7 @@ dist_metrics <- list(
     "SD of parameters (all)" = c("Delta_SD_parameters_all.pdf", TRUE),
     "SD of actionable parameters" = c("Delta_SD_parameters_actionable_distrib.pdf", TRUE),
     "MSE" = c("Delta_MSE_distrib.pdf", TRUE),
+    "MSE per sample" = c("Delta_MSE_per_sample_distrib.pdf", FALSE),
     "TjurR2" = c("Delta_TjurR2_distrib.pdf", FALSE)
 )
 

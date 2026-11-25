@@ -334,7 +334,7 @@ propagate_raster_values <- function(
         regional_value = NULL  # NULL = mean of valid cells per layer; or a single number /
                                # a vector with one value per layer
     ) {
-
+        
     # Security checks
     if (!is_metric(raster) && !is.lonlat(raster)) {
         stop("propagate_raster_values() needs a metric or lon/lat CRS.")
@@ -614,10 +614,16 @@ create_master_files_features <- function(
     # same CRS, template resolution is an integer multiple (>= 2) of the source
     # resolution, and the source grid lines up with the template cell boundaries.
     can_aggregate <- function(r, template, tol = 1e-6) {
-        if (!check_crs(r, template)) return(FALSE)
+        if (!check_crs(r, template)) {
+            cli_alert_warning("Different CRS")
+            return(FALSE)
+        }
  
         fact <- res(template) / res(r)
-        if (any(fact < 2 - tol) || any(abs(fact - round(fact)) > tol)) return(FALSE)
+        if (any(fact < 2 - tol) || any(abs(fact - round(fact)) > tol)) {
+            cli_alert_warning("Same CRS, different grid")
+            return(FALSE)
+        }
  
         rt <- res(template)
         dx <- (xmin(r) - xmin(template)) / rt[1]
@@ -637,21 +643,21 @@ create_master_files_features <- function(
  
         if (can_aggregate(r, template)) {
             fact <- as.integer(round(res(template) / res(r)))
-            cli_alert_info(paste0(
-                "Aligned grid: using aggregate() with factor ",
-                paste(fact, collapse = "x"), "."))
  
             if (any(is_near)) {
-                parts$near <- terra::aggregate(
-                    r[[which(is_near)]], fact = fact, fun = "modal", na.rm = TRUE)
+                cli_alert_info("Grid aligned: using project().")
+                parts$near <- terra::project(
+                    r[[which(is_near)]], template, method = "near")
             }
             if (any(!is_near)) {
+                cli_alert_info(paste0(
+                    "Grid aligned: using aggregate() with factor ",
+                    paste(fact, collapse = "x"), "."))
                 parts$cont <- terra::aggregate(
                     r[[which(!is_near)]], fact = fact, fun = "mean", na.rm = TRUE)
             }
         } else {
-            cli_alert_info("Grid not aligned or different CRS: using project().")
- 
+            cli_alert_warning("Grid not aligned: using project().")
             if (any(is_near)) {
                 parts$near <- terra::project(
                     r[[which(is_near)]], template, method = "near")
@@ -722,28 +728,6 @@ create_master_files_features <- function(
             setNames(environmental_data_paths, rep("*", length(environmental_data_paths)))
         ))
 
-        # Create target extent for multi-layer raster
-        france_sf <- get_metropolitan_france_shapefile()
-        france_sf_buffered <- france_sf |>
-            st_transform(PROJECT_CRS) |>    
-            st_buffer(dist = BUFFER_SIZE) # buffer distance in meters
-        target_ext <- ext(france_sf_buffered)
-
-        # Security check (Right CRS + minimal extent)
-        for (path in environmental_data_paths) {
-            r <- rast(path)
-            if (!check_crs(r, PROJECT_CRS)) {
-                # a loser check, just to be sure
-                stop(paste("CRS should be", PROJECT_CRS, "for file:", path))
-            }
-            if (!((abs(xmin(target_ext) - xmin(r)) <= RES_KM*1000) &&
-                  (abs(xmax(r) - xmax(target_ext)) <= RES_KM*1000) &&
-                  (abs(ymin(target_ext) - ymin(r)) <= RES_KM*1000) &&
-                  (abs(ymax(r) - ymax(target_ext)) <= RES_KM*1000))) {
-                stop(paste("Raster extent should be larger for file: ", path))
-            }
-        }
-
         # Get all resolutions in meters 
         # (LEGACY: degrees converted via the N-S length of a degree)
         resolutions <- vapply(environmental_data_paths, function(p) {
@@ -757,7 +741,9 @@ create_master_files_features <- function(
 
         # Select coarsest resolution and create template
         target_res <- ceiling(max(resolutions, na.rm = TRUE) / 100) * 100  # round up to next 100 m
-        template <- rast(target_ext, resolution = target_res, crs = PROJECT_CRS)
+        template <- get_france_raster_template(target_res/1000)
+        stopifnot(isTRUE(all.equal(res(template), c(target_res, target_res))))
+
         cli_alert_info(paste0(
             "Selecting raster with coarsest resolution (res: ", 
             round(target_res, 2), " m)."))
@@ -771,38 +757,17 @@ create_master_files_features <- function(
                 env_raster <- rast(path)
             } else {
                 stop(paste("File should be a raster:", path))
-                # LEGACY for SpatVectors
-                # vector <- vect(path)
-                # if ("mean_tii" %in% names(vector)) {
-                #     vector <- project(vector, PROJECT_CRS)
-                #     env_raster <- rasterize(
-                #         vector, template, 
-                #         field = "mean_tii", fun = "mean", touches = TRUE)
-                # } else {
-                #     stop(
-                #         paste0("Cannot find field name for vector: ", 
-                #                 path, "."))
-                # }
             }
             
             # cheap pre-crop
             if (!check_crs(env_raster, PROJECT_CRS)) {
-                ext_native <- project(target_ext, from = PROJECT_CRS, to = crs(env_raster))
+                ext_native <- project(
+                    ext(template), from = PROJECT_CRS, to = crs(env_raster))
                 env_raster <- crop(env_raster, ext_native * 1.05, extend = TRUE)
             } else {
-                env_raster <- crop(env_raster, target_ext, extend = TRUE)
+                env_raster <- crop(env_raster, ext(template), extend = TRUE)
             }
 
-            # Project on template grid
-            # CLC: land cover layer = "near"; distance/proportion = "bilinear".
-            # Everything else is continuous -> "bilinear".
-            # if (grepl("CLC", path, ignore.case = TRUE)) {
-            #     methods <- ifelse(
-            #         grepl("^(distance|prop_)", names(env_raster), ignore.case = TRUE),
-            #         "bilinear", "modal")
-            # } else {
-            #     methods <- rep("bilinear", nlyr(env_raster))
-            # }
             # use "near": less precise but way faster to compute
             methods <- rep("near", nlyr(env_raster))
             raster_resampled <- resample_to_template(env_raster, template, methods)
@@ -997,14 +962,22 @@ get_master_t_rasters <- function(mode = "raw", keep.lyr = NULL) {
 #   - a SpatRaster with empty values to the extent of France's metropolitan
 #       area in PROJECT_CRS
 get_france_raster_template <- function(resolution) {
+    target_res <- resolution * 1000
     france_sf <- get_metropolitan_france_shapefile()
     france_sf_buffered <- france_sf |>
         st_transform(PROJECT_CRS) |>       # equal-area CRS (distances in meters)
         st_buffer(dist = BUFFER_SIZE)      # buffer distance in meters
-    rast(
-        extent = ext(france_sf_buffered),
-        resolution = resolution * 1000, crs = PROJECT_CRS
+    target_ext <- ext(france_sf_buffered)
+
+    # Snap the extent to a multiple of the target resolution, rounding outwards
+    snapped_ext <- ext(
+        floor(xmin(target_ext) / target_res) * target_res,
+        ceiling(xmax(target_ext) / target_res) * target_res,
+        floor(ymin(target_ext) / target_res) * target_res,
+        ceiling(ymax(target_ext) / target_res) * target_res
     )
+
+    rast(extent = snapped_ext, resolution = target_res, crs = PROJECT_CRS)
 }
 
 # A function to transform a raster into a (raster) grid layered on france
@@ -1069,7 +1042,7 @@ project_raster_to_france_grid <- function(raster, save_to, res_km) {
 # RETURNS:
 #   - NULL, saves the re-projected SpatRaster silently.
 rasterise_to_france_grid <- function(
-        vector, layer_name, save_to, res_km, touches = TRUE) {   
+        vector, layer_name, save_to, res_km, touches = TRUE, fill_missing = TRUE) {   
     
     # Security checks
     if (ncol(vector) != 1) {
@@ -1087,7 +1060,8 @@ rasterise_to_france_grid <- function(
         field = layer_name, fun = "mean", touches = touches)
     
     cli_alert_info("Masking...\n")
-    raster_new_grid_clean <- clip_raster_to_france_shape(raster_new_grid)
+    raster_new_grid_clean <- clip_raster_to_france_shape(
+        raster_new_grid, fill_missing = fill_missing)
     
     cli_alert_info("Saving file...\n")
     if (is.null(save_to)) {

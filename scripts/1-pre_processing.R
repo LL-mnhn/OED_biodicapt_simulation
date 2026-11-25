@@ -4,13 +4,14 @@
 #   - anonymizes gps coordinates
 
 ##### Libraries ##### ---------------------------------------------------------
-library(tidyterra)
 library(terra)
 library(dplyr)
 library(readr)
 library(tools)
 library(cli)
 library(sf)
+library(data.table)
+library(tidyterra)
 
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_data.R"))))
 suppressPackageStartupMessages(source(here::here(file.path("R", "utils_figures.R"))))
@@ -115,6 +116,37 @@ preprocess_light_pollution  <- function() {
         cropped_projected_pollution, 
         fill_missing = FALSE,
         save_to = LIGHT_POLLUTION_PATH_PREPROCESSED)
+}
+
+preprocess_pesticides <- function(n_years = 3) {
+    pesticides_years <- seq(
+        as.numeric(OBS_YEAR)-n_years+1, 
+        as.numeric(OBS_YEAR))
+    vector_pesticides <- vect(PESTICIDE_FILEPATH)
+    v <- vector_pesticides |>
+        filter(year %in% pesticides_years)
+
+    # Average per polygon on the attribute table only (no geometry work)
+    avg <- v |>
+        as_tibble() |>
+        group_by(id) |>
+        summarise(across(where(is.numeric) & !year, \(x) mean(x, na.rm = TRUE)))
+
+    # Extract one copy of the geometry (a single year), keeping only the id
+    geom <- v |>
+        filter(year == pesticides_years[1]) |>
+        select(id)
+
+    # Join the means back onto the geometry
+    out <- geom |>
+        left_join(avg, by = "id")
+    
+    . <- rasterise_to_france_grid(
+            vector = out["mean_tii"], 
+            layer_name = "mean_tii",
+            save_to = PESTICIDE_PATH_PREPROCESSED,  
+            res_km = 1, # update PESTICIDE_PATH_PREPROCESSED accordingly
+            fill_missing = TRUE) 
 }
 
 show_save_results <- function() {
@@ -389,9 +421,10 @@ if (exists("BLUR_SEED")) {
 
     # 4. Small Woody Features dataset
     cli_alert_info("Preprocessing SWF dataset...")
-    # Add buffer
+    # Aggregate (resolution: 100m -> 500m) + add buffer
+    swf_500 <- aggregate(rast(SWF_FILEPATH), fact = 5, fun = "mean")
     . <- clip_raster_to_france_shape(
-            subst(rast(SWF_FILEPATH), NA, 0), 
+            subst(swf_500, NA, 0), 
             fill_missing = TRUE,
             save_to = SWF_PATH_PREPROCESSED)
     . <- check_raster_standardised_raster_projection(
@@ -423,11 +456,8 @@ if (exists("BLUR_SEED")) {
 
     # 8. Pesticides use dataset
     cli_alert_info("Preprocessing pesticides use dataset...")
-    . <- rasterise_to_france_grid(
-            vector = vect(PESTICIDE_FILEPATH)["mean_tii"], 
-            layer_name = "mean_tii",
-            save_to = PESTICIDE_PATH_PREPROCESSED,  
-            res_km = 0.1) 
+    # Average over last 3 years (to take into account stocks of pesticides)
+    . <- preprocess_pesticides()
     . <- check_raster_standardised_raster_projection(
         raster_path = PESTICIDE_PATH_PREPROCESSED,
         save_to_basename = PESTICIDE_PROJECTION_BASEPATH)
@@ -439,7 +469,7 @@ if (exists("BLUR_SEED")) {
     . <- create_master_files_features(FEATURES_RES_FULL, mode = "raster")
     cli_alert_success("Multi-layer rasters/shp ready!")
 
-    
+
 ##### Add features to df ##### ------------------------------------------------
     cli_alert_info(paste0("Extracting features (res_mode = ", RES_MODE, ")."))
     . <- save_features_from_obs(

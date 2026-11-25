@@ -96,7 +96,7 @@ cli_alert_info("Simulation of species distributions...")
 #         species.prevalence to mimic our observed species prevalence
 simulations <- simulate_from_PCA(
     raster_stack = envs_t_raster_subres, 
-    precomputed_pca = env_pca, 
+    precomputed_pca = env_pca$pca, 
     sites = stoc_df,
     n_sp = length(NAMES_SPECIES), 
     prevalences = stoc_occurences$freq_occurrence,
@@ -122,7 +122,6 @@ for (k in 1:K_FOLDS) {
             detection.probability = PROBABILITY_TP,
             error.probability = PROBABILITY_FP
         )
-
     }
 
     stoc_simulations[[k]] <- local_simul_obs_df[

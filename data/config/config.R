@@ -76,7 +76,7 @@ SWF_FILEPATH <- file.path(RAW_DATA_PATH, "woody_features",
                           paste0("SWF_", OBS_YEAR, "_100m_03035_V1_0.tif"))
 SWF_PATH_PREPROCESSED <- file.path(
     PROCESSED_DATA_PATH, 
-    paste0("preprocessed_swf_", OBS_YEAR, "_100m.tif"))
+    paste0("preprocessed_swf_", OBS_YEAR, "_500m.tif"))
 SWF_PROJECTION_BASEPATH <- file.path(
     PROCESSED_DATA_PATH, 
     paste0("projected-preprocessed_swf_", OBS_YEAR)) 
@@ -129,10 +129,10 @@ LIGHT_POLLUTION_PROJECTION_BASEPATH <- file.path(
 # Pesticide use
 PESTICIDE_FOLDER <- file.path(RAW_DATA_PATH, "pesticides")
 PESTICIDE_FILEPATH <- file.path(PESTICIDE_FOLDER, 
-    "CORRECTED-Combined_exposure_to_active_substance_in_use_air_and_water.gpkg")
+    "Yearly_exposure_to_active_substance_in_use_air_and_water.gpkg")
 PESTICIDE_PATH_PREPROCESSED <- file.path(
     PROCESSED_DATA_PATH,
-    paste0("preprocessed_pesticides_", OBS_YEAR, "_100m.tif"))
+    paste0("preprocessed_pesticides_", OBS_YEAR, "_1km.tif"))
 PESTICIDE_PROJECTION_BASEPATH <- file.path(
     PROCESSED_DATA_PATH,
     paste0("projected-preprocessed_pesticides_", OBS_YEAR))
@@ -205,7 +205,7 @@ NAME_SP_SIMUL <- paste0("sp_", seq(1:length(NAMES_SPECIES)))
 
 
 ### Simulations and Models ----------------------------------------------------
-K_FOLDS <- 10
+K_FOLDS <- 1
 PROBABILITY_TP <- 0.95 # True Positives rate (detection rate)
 PROBABILITY_FP <- 0.01 # False Positives rate (error rate) cannot be less than min(prevalence)
 

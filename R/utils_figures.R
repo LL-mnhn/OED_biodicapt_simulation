@@ -189,7 +189,7 @@ ggplot_get_france_base_map <- function(
         borders_type = "national",
         lon_min = LON_MIN, lon_max = LON_MAX, 
         lat_min = LAT_MIN, lat_max = LAT_MAX
-    ){
+    ) {
     europe_shp = rnaturalearth::ne_countries(
         continent = "Europe", scale = "large", returnclass = "sf")
     france_shp = get_metropolitan_france_shapefile(borders_type)

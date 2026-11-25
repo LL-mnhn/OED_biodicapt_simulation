@@ -3,7 +3,7 @@
 ##### Liraries ##### ----------------------------------------------------------
 library(cli)
 library(terra)
-
+library(virtualspecies)
 
 ##### Global functions ##### --------------------------------------------------
 # A function to "wrap" SpatRasters, which enables saving them.
@@ -67,11 +67,69 @@ customSampleOccurrences <- function(
         stop("'vsp_map' is not recognised.")
     }
     
-
     # extract PA at given points
     pa_vals <- terra::extract(pa_rast, df)[, 2]
 
     # add detection errors afterwards
+    detected <- ifelse(
+        pa_vals == 1,
+        rbinom(length(pa_vals), 1, prob = detection.probability),
+        rbinom(length(pa_vals), 1, prob = error.probability)
+    )
+
+    return(detected)
+}
+
+# A location-free equivalent of customSampleOccurrences. Designed for data 
+# obtained from anonymised locations, avoids bias from location blur.
+# ARGS:
+#   - vector_stack: a SpatVector containing the same columns as those used to 
+#       compute precomputed_pca.
+#   - precomputed_pca: a dudi.pca object (computed from raster_stack values).
+#   - sp_pca_coords: named parameters for the mean and sd of a species 
+#       ellipsoid in the given PCA. See simulate_from_PCA outputs for details.
+#   - sp_pa_params: named parameters for the conversion of a suitability raster
+#       to a presence-absence raster. See simulate_from_PCA outputs for details.
+#   - detection.probability: a numeric value between 0 and 1, 
+#       corresponding to the probability of detection of the species.
+#   - error.probability: a numeric value between 0 and 1, 
+#       corresponding to the probability of detecting a species that is not 
+#       there in reality.
+# RETURNS: 
+#   - a vector of observations/detections (contains values of 0/NA or 1)
+customSampleOccurrencesLocationFree <- function(
+        vector_stack, precomputed_pca, sp_pca_coords, sp_pa_params,
+        detection.probability, error.probability
+    ) {
+    
+    # Convert vector data to a "dummy" raster
+    data_stack <- as.data.frame(vector_stack)
+    raster_stack <- rast(
+        nrows = nrow(data_stack), ncols = 1, nlyrs = ncol(data_stack),
+        xmin = 0, xmax = 1, ymin = 0, ymax = nrow(data_stack))
+    values(raster_stack) <- data_stack
+    names(raster_stack) <- names(data_stack) 
+
+    # Get suitability for each cell
+    suitability <- suppressMessages(generateSpFromPCA(
+        raster.stack = raster_stack,
+        pca = precomputed_pca,
+        means = c(sp_pca_coords$means["mean1"], sp_pca_coords$means["mean2"]), 
+        sds = c(sp_pca_coords$sds["sd1"], sp_pca_coords$sds["sd2"]),
+        plot = FALSE)$suitab.raster)
+    
+    # Get presence - absence for each cell
+    PA <- suppressMessages(convertToPA(
+        suitability,
+        PA.method = "probability",
+        prob.method = "logistic",
+        alpha = sp_pa_params$alpha,
+        beta = sp_pa_params$beta, 
+        plot = FALSE)$pa.raster)
+    pa_vals <- values(unwrap(PA), mat = FALSE)
+    
+    # On top of presence - absence (which is probability-based) 
+    # add detection noise
     detected <- ifelse(
         pa_vals == 1,
         rbinom(length(pa_vals), 1, prob = detection.probability),

@@ -51,6 +51,10 @@ format:
     embed-resources: true
     page-layout: article
     include-after-body: style/tabset-anchor-fix.html
+    format-links:
+      - format: pdf
+        text: PDF
+        href: https://ll-mnhn.github.io/OED_biodicapt_simulation/report/report.pdf
   pdf:
     documentclass: article
     papersize: a4
