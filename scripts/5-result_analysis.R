@@ -433,8 +433,8 @@ ds_corr_plot <- corr_metrics(
     panel_order = c("train"),
     lower_is_better = FALSE,
     save_to = file.path(ANALYSES_PATH, "ds-criterion_expected_vs_realised.pdf"))
-ds_corr_plot$plot <- ds_corr_plot$plot +
-    coord_cartesian(ylim = c(6, 11))
+ds_corr_plot$plot <- ds_corr_plot$plot + 
+    coord_cartesian(xlim = c(5, 8), ylim = c(5, 9))
 print(ds_corr_plot$plot)
 standardised_ggplot_save(
     ds_corr_plot$plot, 
@@ -455,32 +455,32 @@ dsparam_corr_plot <- corr_metrics(
     save_to = NULL)
 dsparam_corr_plot$plot <- dsparam_corr_plot$plot +
     labs(subtitle = "(Ds: higher is better, SD: lower is better)") +
-    coord_cartesian(ylim = c(0.067, 0.2))
+    coord_cartesian(xlim = c(5, 8), ylim = c(0.1, 0.35))
 print(dsparam_corr_plot$plot)
 standardised_ggplot_save(
     dsparam_corr_plot$plot, 
     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD.pdf"))
 
-dsparam_ratio_corr_plot <- corr_metrics(
-    scores = compare_df, 
-    x_metric = "Ds criterion (expected)",
-    y_metric = "SD ratio of actionable parameters",
-    title = "Expected Ds criterion VS SD ratio of actionable parameters",
-    strat_var = "STRATEGIES", 
-    strat_order = ORDER_STRATS,
-    size_var = "NEW_SAMPLE_SIZES", 
-    size_order = NULL,
-    panel_var = "subset", 
-    panel_order = c("train"),
-    lower_is_better = FALSE,
-    save_to = NULL)
-dsparam_ratio_corr_plot$plot <- dsparam_ratio_corr_plot$plot + 
-    labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)") +
-    coord_cartesian(ylim = c(0.33, 1))
-print(dsparam_ratio_corr_plot$plot)
-standardised_ggplot_save(
-    dsparam_ratio_corr_plot$plot, 
-    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD_ratio.pdf"))
+# dsparam_ratio_corr_plot <- corr_metrics(
+#     scores = compare_df, 
+#     x_metric = "Ds criterion (expected)",
+#     y_metric = "SD ratio of actionable parameters",
+#     title = "Expected Ds criterion VS SD ratio of actionable parameters",
+#     strat_var = "STRATEGIES", 
+#     strat_order = ORDER_STRATS,
+#     size_var = "NEW_SAMPLE_SIZES", 
+#     size_order = NULL,
+#     panel_var = "subset", 
+#     panel_order = c("train"),
+#     lower_is_better = FALSE,
+#     save_to = NULL)
+# dsparam_ratio_corr_plot$plot <- dsparam_ratio_corr_plot$plot + 
+#     labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)") +
+#     coord_cartesian(xlim = c(5, 8), ylim = c(0.45, 1.33))
+# print(dsparam_ratio_corr_plot$plot)
+# standardised_ggplot_save(
+#     dsparam_ratio_corr_plot$plot, 
+#     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_actionable_SD_ratio.pdf"))
 
 dsallparam_corr_plot <- corr_metrics(
     scores = compare_df, 
@@ -497,32 +497,32 @@ dsallparam_corr_plot <- corr_metrics(
     save_to = NULL)
 dsallparam_corr_plot$plot <- dsallparam_corr_plot$plot + 
     labs(subtitle = "(Ds: higher is better, SD: lower is better)") +
-    coord_cartesian(ylim = c(0.095, 0.2))
+    coord_cartesian(xlim = c(5, 8), ylim = c(0, 0.5))
 print(dsallparam_corr_plot$plot)
 standardised_ggplot_save(
     dsallparam_corr_plot$plot, 
     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD.pdf"))
 
-dsallparam_ratio_corr_plot <- corr_metrics(
-    scores = compare_df, 
-    x_metric = "Ds criterion (expected)",
-    y_metric = "SD ratio of parameters (all)",
-    title = "Expected Ds criterion VS SD ratio of all parameters",
-    strat_var = "STRATEGIES", 
-    strat_order = ORDER_STRATS,
-    size_var = "NEW_SAMPLE_SIZES", 
-    size_order = NULL,
-    panel_var = "subset", 
-    panel_order = c("train"),
-    lower_is_better = FALSE,
-    save_to = NULL)
-dsallparam_ratio_corr_plot$plot <- dsallparam_ratio_corr_plot$plot + 
-    labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)") +
-    coord_cartesian(ylim = c(0.45, 1))
-print(dsallparam_ratio_corr_plot$plot)
-standardised_ggplot_save(
-    dsallparam_ratio_corr_plot$plot, 
-    file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD_ratio.pdf"))
+# dsallparam_ratio_corr_plot <- corr_metrics(
+#     scores = compare_df, 
+#     x_metric = "Ds criterion (expected)",
+#     y_metric = "SD ratio of parameters (all)",
+#     title = "Expected Ds criterion VS SD ratio of all parameters",
+#     strat_var = "STRATEGIES", 
+#     strat_order = ORDER_STRATS,
+#     size_var = "NEW_SAMPLE_SIZES", 
+#     size_order = NULL,
+#     panel_var = "subset", 
+#     panel_order = c("train"),
+#     lower_is_better = FALSE,
+#     save_to = NULL)
+# dsallparam_ratio_corr_plot$plot <- dsallparam_ratio_corr_plot$plot + 
+#     labs(subtitle = "(Ds: higher is better, SD ratio: lower is better)") +
+#     coord_cartesian(xlim = c(5, 8), ylim = c(0.45, 1.33))
+# print(dsallparam_ratio_corr_plot$plot)
+# standardised_ggplot_save(
+#     dsallparam_ratio_corr_plot$plot, 
+#     file.path(ANALYSES_PATH, "ds-criterion_expected_vs_all_parameters_SD_ratio.pdf"))
 
 i_corr_plot <- corr_metrics(
     scores = compare_df, 
@@ -538,7 +538,7 @@ i_corr_plot <- corr_metrics(
     panel_order = c("test_local"),
     save_to = NULL)
 i_corr_plot$plot <- i_corr_plot$plot +
-    coord_cartesian(ylim = c(-0.045, -0.0033))
+    coord_cartesian(xlim = c(-0.033, 0), ylim = c(-0.033, 0))
 print(i_corr_plot$plot)
 standardised_ggplot_save(
     i_corr_plot$plot, 
@@ -558,7 +558,8 @@ ipred_corr_plot <- corr_metrics(
     panel_order = c("test_local"),
     save_to = NULL)
 ipred_corr_plot$plot <- ipred_corr_plot$plot + 
-    labs(subtitle = "(I: higher is better, SD: lower is better)")
+    labs(subtitle = "(I: higher is better, SD: lower is better)") +
+    coord_cartesian(xlim = c(-0.033, 0), ylim = c(0.08, 0.13))
 print(ipred_corr_plot$plot)
 standardised_ggplot_save(
     ipred_corr_plot$plot, 

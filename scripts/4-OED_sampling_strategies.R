@@ -40,7 +40,7 @@ NCHAINS <- 3
 EFFECTS <- list(
     # Reference effects (ALWAYS the first element)
     list(
-        R_EFFECTS = c("site"), 
+        R_EFFECTS = c("site"),  # Best according to outputs_2026-11-16
         NEW_SAMPLE_SIZES = c(0),
         STRATEGIES = c("none")
     ),
@@ -84,32 +84,52 @@ prepare_datasets <- function() {
                     "[k-fold {k}/{K_FOLDS}]: Observation of sp {sp_i}/{length(NAME_SP_SIMUL)}...")
             )
 
-            # Use customSampleOccurrencesLocationFree for all datasets
-            # (designed for anonymised data but works for all)
-            biodicapt_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
-                vector_stack = biodicapt_vec[X_VARIABLES], 
-                precomputed_pca = env_pca$pca, 
-                sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
-                sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            # Use CustomSampleOccurences for fixed locations
+            biodicapt_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                biodicapt_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
             )
-            eni500_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
-                vector_stack = eni500_vec[X_VARIABLES], 
-                precomputed_pca = env_pca$pca, 
-                sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
-                sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            eni500_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                eni500_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
             )
-            stoc_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
-                vector_stack = stoc_vec[X_VARIABLES], 
-                precomputed_pca = env_pca$pca, 
-                sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
-                sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            stoc_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
+                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                stoc_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
             )
+
+            # # Use customSampleOccurrencesLocationFree for all datasets
+            # # (designed for anonymised data but works for all)
+            # biodicapt_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
+            #     vector_stack = biodicapt_vec[X_VARIABLES], 
+            #     precomputed_pca = env_pca$pca, 
+            #     sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
+            #     sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            #     detection.probability = PROBABILITY_TP,
+            #     error.probability = PROBABILITY_FP
+            # )
+            # eni500_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
+            #     vector_stack = eni500_vec[X_VARIABLES], 
+            #     precomputed_pca = env_pca$pca, 
+            #     sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
+            #     sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            #     detection.probability = PROBABILITY_TP,
+            #     error.probability = PROBABILITY_FP
+            # )
+            # stoc_vec[[sp_name]] <- customSampleOccurrencesLocationFree(
+            #     vector_stack = stoc_vec[X_VARIABLES], 
+            #     precomputed_pca = env_pca$pca, 
+            #     sp_pca_coords = simulations$sp_params[[k]][[sp_name]], 
+            #     sp_pa_params = simulations$sp_pa_params[[k]][[sp_name]], 
+            #     detection.probability = PROBABILITY_TP,
+            #     error.probability = PROBABILITY_FP
+            # )
         }
 
         # clean columns
