@@ -86,19 +86,19 @@ prepare_datasets <- function() {
 
             # Use CustomSampleOccurences for fixed locations
             biodicapt_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
-                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                simulations$sp_observations[[k]][[paste0("sp_", sp_i)]],
                 biodicapt_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
             )
             eni500_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
-                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                simulations$sp_observations[[k]][[paste0("sp_", sp_i)]],
                 eni500_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
             )
             stoc_vec[[paste0("sp_", sp_i)]] <- customSampleOccurrences(
-                pa_obs[[k]][[paste0("sp_", sp_i)]],
+                simulations$sp_observations[[k]][[paste0("sp_", sp_i)]],
                 stoc_vec,
                 detection.probability = PROBABILITY_TP,
                 error.probability = PROBABILITY_FP
